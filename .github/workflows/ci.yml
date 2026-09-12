@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Check generated project
+        run: |
+          xcodegen generate
+          git diff --exit-code -- KiwiOS.xcodeproj
+      - name: Test
+        run: >-
+          xcodebuild
+          -project KiwiOS.xcodeproj
+          -scheme KiwiOS
+          -destination platform=macOS
+          CODE_SIGNING_ALLOWED=NO
+          test
+      - name: Check example plugin
+        run: ./plugins/hello-check/check.sh

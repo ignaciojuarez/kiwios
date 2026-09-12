@@ -1,0 +1,34 @@
+id = "hello-check"
+name = "Hello"
+version = "0.1.0"
+kiwios_api = "1"
+license = "MIT"
+
+[[checks]]
+id = "hello"
+label = "Hello"
+command = ["./check.sh"]
+
+[[actions]]
+id = "ping"
+label = "Ping"
+confirm = true
+command = ["./check.sh"]
+
+[[ui.sidebar]]
+id = "hello"
+label = "Hello"
+page = "status"
+
+[[ui.pages]]
+id = "status"
+title = "Hello"
+kind = "checks"
+source = "checks"
+
+[[ui.widgets]]
+id = "hello"
+title = "Hello"
+kind = "stat"
+source = "checks.hello"
+size = "1x1"

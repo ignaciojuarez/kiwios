@@ -1,0 +1,498 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0FE1116E1212D6A73DE534C7 /* KiwiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3056A09229B102CF74591D /* KiwiOSApp.swift */; };
+		123EF50506087F4B773DE2BB /* TOMLDecoder in Frameworks */ = {isa = PBXBuildFile; productRef = 82C00C3B95129F44AFC39F27 /* TOMLDecoder */; };
+		4D42F80F564C3E1A85A303C1 /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = 9308985B7C41FDD90F9B4FA5 /* Subprocess */; };
+		4E8E0AFC4E354251BF75D2F3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF80F4E018ED98CACDC57666 /* RootView.swift */; };
+		628009FEE273526A34ECDCCE /* Runtime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7256EE2DB7EACFE92CDD81 /* Runtime.swift */; };
+		709AD8D08B79327EEA20D661 /* hello-check in Resources */ = {isa = PBXBuildFile; fileRef = 8D52E6B0DCEA16F041814033 /* hello-check */; };
+		74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F65F461C851BA86A09522DC /* Assets.xcassets */; };
+		797EC3EAC0744FB0BB5E2388 /* RuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79F328211F039186E5D2162 /* RuntimeTests.swift */; };
+		A6610303B05CA61616A05352 /* PluginManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04963A16F368B506B6DC1DD9 /* PluginManifest.swift */; };
+		CB8B73C148B0E1DBB8782BC7 /* ManifestValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04A1FF3D99D5AE196C6E03D /* ManifestValidationTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		223523D9CE58B77A18B6900B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AD52FCDAFC7F01D3843AA410 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 038F37A48AC7AB5479D5B297;
+			remoteInfo = KiwiOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		04963A16F368B506B6DC1DD9 /* PluginManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManifest.swift; sourceTree = "<group>"; };
+		2E7256EE2DB7EACFE92CDD81 /* Runtime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runtime.swift; sourceTree = "<group>"; };
+		2F65F461C851BA86A09522DC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6B3056A09229B102CF74591D /* KiwiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiwiOSApp.swift; sourceTree = "<group>"; };
+		8D52E6B0DCEA16F041814033 /* hello-check */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "hello-check"; path = "plugins/hello-check"; sourceTree = SOURCE_ROOT; };
+		A79F328211F039186E5D2162 /* RuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeTests.swift; sourceTree = "<group>"; };
+		DF80F4E018ED98CACDC57666 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		E6ADF401BBDC57A95EC16E04 /* KiwiOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiwiOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EFA05AE9A34304E309E73BB3 /* KiwiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KiwiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F04A1FF3D99D5AE196C6E03D /* ManifestValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManifestValidationTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EE97BB124F3155B1243D9B10 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D42F80F564C3E1A85A303C1 /* Subprocess in Frameworks */,
+				123EF50506087F4B773DE2BB /* TOMLDecoder in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3A5DC820E578A7E5D7F52E79 /* plugins */ = {
+			isa = PBXGroup;
+			children = (
+				8D52E6B0DCEA16F041814033 /* hello-check */,
+			);
+			path = plugins;
+			sourceTree = "<group>";
+		};
+		85046B06ABD3D57E9BCBDD1E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				EFA05AE9A34304E309E73BB3 /* KiwiOS.app */,
+				E6ADF401BBDC57A95EC16E04 /* KiwiOSTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B0F84790EF341CB1B8541F43 /* KiwiOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				F04A1FF3D99D5AE196C6E03D /* ManifestValidationTests.swift */,
+				A79F328211F039186E5D2162 /* RuntimeTests.swift */,
+			);
+			path = KiwiOSTests;
+			sourceTree = "<group>";
+		};
+		B1D656B5DE3F2B38D2A59399 = {
+			isa = PBXGroup;
+			children = (
+				FC1CD91ED112AFB4815DF47D /* KiwiOS */,
+				B0F84790EF341CB1B8541F43 /* KiwiOSTests */,
+				3A5DC820E578A7E5D7F52E79 /* plugins */,
+				85046B06ABD3D57E9BCBDD1E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FC1CD91ED112AFB4815DF47D /* KiwiOS */ = {
+			isa = PBXGroup;
+			children = (
+				2F65F461C851BA86A09522DC /* Assets.xcassets */,
+				6B3056A09229B102CF74591D /* KiwiOSApp.swift */,
+				04963A16F368B506B6DC1DD9 /* PluginManifest.swift */,
+				DF80F4E018ED98CACDC57666 /* RootView.swift */,
+				2E7256EE2DB7EACFE92CDD81 /* Runtime.swift */,
+			);
+			path = KiwiOS;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		038F37A48AC7AB5479D5B297 /* KiwiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7343E0860C3BB034836DDA01 /* Build configuration list for PBXNativeTarget "KiwiOS" */;
+			buildPhases = (
+				B955313EC25C7D33E4DC21F4 /* Sources */,
+				C08AC3A4F3634F398014304B /* Resources */,
+				EE97BB124F3155B1243D9B10 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KiwiOS;
+			packageProductDependencies = (
+				9308985B7C41FDD90F9B4FA5 /* Subprocess */,
+				82C00C3B95129F44AFC39F27 /* TOMLDecoder */,
+			);
+			productName = KiwiOS;
+			productReference = EFA05AE9A34304E309E73BB3 /* KiwiOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A1C13E51663D6E2BF3433855 /* KiwiOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4DDC301F50BE9F51E6895242 /* Build configuration list for PBXNativeTarget "KiwiOSTests" */;
+			buildPhases = (
+				F1D07384F71DD1BC0BE61BD3 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A600F161C5B0BDEDF4C99FE5 /* PBXTargetDependency */,
+			);
+			name = KiwiOSTests;
+			packageProductDependencies = (
+			);
+			productName = KiwiOSTests;
+			productReference = E6ADF401BBDC57A95EC16E04 /* KiwiOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AD52FCDAFC7F01D3843AA410 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					038F37A48AC7AB5479D5B297 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 5B05BEC32F7C9FC15C386185 /* Build configuration list for PBXProject "KiwiOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B1D656B5DE3F2B38D2A59399;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				04E5E333CCF908156B31585F /* XCRemoteSwiftPackageReference "swift-subprocess" */,
+				75E23F30C2FC6B7C16297DFF /* XCRemoteSwiftPackageReference "TOMLDecoder" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 85046B06ABD3D57E9BCBDD1E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				038F37A48AC7AB5479D5B297 /* KiwiOS */,
+				A1C13E51663D6E2BF3433855 /* KiwiOSTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C08AC3A4F3634F398014304B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */,
+				709AD8D08B79327EEA20D661 /* hello-check in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B955313EC25C7D33E4DC21F4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FE1116E1212D6A73DE534C7 /* KiwiOSApp.swift in Sources */,
+				A6610303B05CA61616A05352 /* PluginManifest.swift in Sources */,
+				4E8E0AFC4E354251BF75D2F3 /* RootView.swift in Sources */,
+				628009FEE273526A34ECDCCE /* Runtime.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F1D07384F71DD1BC0BE61BD3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB8B73C148B0E1DBB8782BC7 /* ManifestValidationTests.swift in Sources */,
+				797EC3EAC0744FB0BB5E2388 /* RuntimeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A600F161C5B0BDEDF4C99FE5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 038F37A48AC7AB5479D5B297 /* KiwiOS */;
+			targetProxy = 223523D9CE58B77A18B6900B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		50CD43FE445BA99E2FB1778F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.KiwiOSTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KiwiOS.app/Contents/MacOS/KiwiOS";
+			};
+			name = Release;
+		};
+		760BCF324274BCD9D0BF6C92 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KiwiOS;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kiwios;
+				PRODUCT_NAME = KiwiOS;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		AF5CD3D2BE05B138E2F721C6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		EF03D33A8D58F9C421245B5A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		F6B0B277FC8DBAFEE49132B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.KiwiOSTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KiwiOS.app/Contents/MacOS/KiwiOS";
+			};
+			name = Debug;
+		};
+		FBC85201D79D2B35D4254AFC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KiwiOS;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kiwios;
+				PRODUCT_NAME = KiwiOS;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4DDC301F50BE9F51E6895242 /* Build configuration list for PBXNativeTarget "KiwiOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F6B0B277FC8DBAFEE49132B5 /* Debug */,
+				50CD43FE445BA99E2FB1778F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5B05BEC32F7C9FC15C386185 /* Build configuration list for PBXProject "KiwiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF5CD3D2BE05B138E2F721C6 /* Debug */,
+				EF03D33A8D58F9C421245B5A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7343E0860C3BB034836DDA01 /* Build configuration list for PBXNativeTarget "KiwiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FBC85201D79D2B35D4254AFC /* Debug */,
+				760BCF324274BCD9D0BF6C92 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		04E5E333CCF908156B31585F /* XCRemoteSwiftPackageReference "swift-subprocess" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-subprocess.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.0;
+			};
+		};
+		75E23F30C2FC6B7C16297DFF /* XCRemoteSwiftPackageReference "TOMLDecoder" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/dduan/TOMLDecoder.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.4.5;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		82C00C3B95129F44AFC39F27 /* TOMLDecoder */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 75E23F30C2FC6B7C16297DFF /* XCRemoteSwiftPackageReference "TOMLDecoder" */;
+			productName = TOMLDecoder;
+		};
+		9308985B7C41FDD90F9B4FA5 /* Subprocess */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04E5E333CCF908156B31585F /* XCRemoteSwiftPackageReference "swift-subprocess" */;
+			productName = Subprocess;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AD52FCDAFC7F01D3843AA410 /* Project object */;
+}

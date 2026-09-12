@@ -1,0 +1,52 @@
+name: KiwiOS
+packages:
+  Subprocess:
+    url: https://github.com/swiftlang/swift-subprocess.git
+    exactVersion: 1.0.0
+  TOMLDecoder:
+    url: https://github.com/dduan/TOMLDecoder.git
+    exactVersion: 0.4.5
+options:
+  bundleIdPrefix: app
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  xcodeVersion: "27.0"
+settings:
+  MARKETING_VERSION: "0.1.0"
+  CURRENT_PROJECT_VERSION: 1
+  SWIFT_VERSION: "6.0"
+  MACOSX_DEPLOYMENT_TARGET: "15.0"
+targets:
+  KiwiOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: KiwiOS
+      - path: plugins/hello-check
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: Subprocess
+      - package: TOMLDecoder
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: app.kiwios
+      PRODUCT_NAME: KiwiOS
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_CFBundleDisplayName: KiwiOS
+      INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+      INFOPLIST_KEY_NSHighResolutionCapable: YES
+      CODE_SIGN_STYLE: Automatic
+      ENABLE_APP_SANDBOX: NO
+      ENABLE_HARDENED_RUNTIME: YES
+      COMBINE_HIDPI_IMAGES: YES
+      SWIFT_EMIT_LOC_STRINGS: YES
+  KiwiOSTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: KiwiOSTests
+    dependencies:
+      - target: KiwiOS
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
