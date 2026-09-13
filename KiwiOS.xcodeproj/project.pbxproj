@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A10000000000000000000001 /* app-icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* app-icon.icon */; };
 		02AF4B1B278F4C94875598F9 /* RemoteSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DA0D76F0E982E9BF06F4F6 /* RemoteSecurity.swift */; };
 		02CA12748FB8F4A4C2C06074 /* PluginMarketplaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E6CE20556E7DC65AB45AC7 /* PluginMarketplaceView.swift */; };
 		0A9B64DB150D26E888A5ADDA /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC3B51E31C10E3C2FA47A2B /* HomeView.swift */; };
@@ -64,6 +65,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A10000000000000000000002 /* app-icon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = app-icon.icon; sourceTree = SOURCE_ROOT; };
 		027742968FDE49F4D3116E31 /* PluginContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginContracts.swift; sourceTree = "<group>"; };
 		04963A16F368B506B6DC1DD9 /* PluginManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManifest.swift; sourceTree = "<group>"; };
 		0BA53479E7A50E785653D880 /* TailscaleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleService.swift; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 		B1D656B5DE3F2B38D2A59399 = {
 			isa = PBXGroup;
 			children = (
+				A10000000000000000000002 /* app-icon.icon */,
 				91AB0AEA63D51832C3458B47 /* catalog */,
 				9770E5B2876C93010320E948 /* plugins */,
 				FC1CD91ED112AFB4815DF47D /* KiwiOS */,
@@ -284,6 +287,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000001 /* app-icon.icon in Resources */,
 				74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */,
 				D56C30418B862E4BABB1D30D /* Web in Resources */,
 				18A22C518AAC88BF15680B7D /* catalog in Resources */,
@@ -375,7 +379,7 @@
 		760BCF324274BCD9D0BF6C92 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = app-icon;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_APP_SANDBOX = NO;
@@ -539,7 +543,7 @@
 		FBC85201D79D2B35D4254AFC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = app-icon;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_APP_SANDBOX = NO;

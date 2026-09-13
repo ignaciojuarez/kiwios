@@ -4,6 +4,8 @@ All notable user-visible changes will be recorded here.
 
 ## Unreleased
 
+- Use the bundled Icon Composer design as the macOS app icon.
+
 - Keep Home stat widgets stable while checks refresh, hide their result timestamp and descriptive source metadata, and omit timestamps from routine check rows.
 
 - Harden Homebrew ownership with exact receipt identities and disabled automatic cleanup/upgrade behavior; keep admitted confirmations valid through queueing and return a plugin to Not Added when dependency installation fails. Centralize Doctor host readiness, reject unsupported TCC declarations, refresh diagnostics on lifecycle changes, and recover desired Tailscale publication with atomic journaling, bounded retry, and exact shutdown cleanup.
