@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#111612">
+  <meta name="theme-color" content="#070908">
   <title>KiwiOS</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" defer></script>
@@ -12,22 +14,44 @@
 <body>
   <div class="shell">
     <aside>
-      <a class="brand" href="#home" aria-label="KiwiOS home"><span class="mark">K</span><span>KiwiOS</span></a>
-      <nav id="navigation" aria-label="Plugins"></nav>
+      <a class="brand" href="#home" aria-label="KiwiOS home">
+        <img class="brand-mark" src="/icon-192.png" width="34" height="34" alt="" aria-hidden="true">
+        <span class="brand-copy">
+          <span class="brand-name">KIWI.OS</span>
+          <span class="brand-detail">Mac mini control</span>
+        </span>
+      </a>
+      <nav id="navigation" aria-label="KiwiOS"></nav>
       <div id="viewer" class="viewer"></div>
     </aside>
     <main>
-      <header><button id="back" class="quiet hidden" type="button">Back</button><div><p id="eyebrow">Mac mini hub</p><h1 id="title">Home</h1></div><span id="connection" class="connection">Connecting</span></header>
+      <header>
+        <button id="back" class="quiet hidden" type="button">← Back</button>
+        <div>
+          <p id="eyebrow">System / Overview</p>
+          <h1 id="title">Home</h1>
+        </div>
+        <span id="connection" class="connection">Connecting</span>
+      </header>
       <div id="notice" class="notice hidden" role="status"></div>
-      <section id="content" aria-live="polite" aria-busy="true"></section>
+      <section id="content" aria-busy="true"></section>
     </main>
   </div>
   <dialog id="confirmation" aria-labelledby="confirmation-title">
     <form method="dialog">
-      <p class="eyebrow">Confirmation required</p>
       <h2 id="confirmation-title">Run action?</h2>
-      <p id="confirmation-detail">Review this action before continuing.</p>
-      <div class="dialog-actions"><button value="cancel" class="quiet">Cancel</button><button id="confirm-action" value="default">Run action</button></div>
+      <p id="confirmation-detail"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="quiet">Cancel</button>
+        <button id="confirm-action" value="default">Run action</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="dependency-alert" aria-labelledby="dependency-title">
+    <form method="dialog">
+      <h2 id="dependency-title">Install dependencies on the Mac</h2>
+      <p id="dependency-detail"></p>
+      <div class="dialog-actions"><button value="close">Close</button></div>
     </form>
   </dialog>
 </body>

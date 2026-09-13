@@ -80,6 +80,15 @@ struct RemoteActionChallenge: Sendable {
     let identity: RemoteIdentity
     let confirmation: ActionConfirmation
 }
+struct RemoteNativeChallenge: Sendable {
+    let identity: RemoteIdentity
+    let operation: NativeOperation
+    let expiresAt: Date
+
+    func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {
+        identity == candidate && expiresAt > now
+    }
+}
 
 extension HubRuntime {
     func restoreIntegrations() async {
@@ -128,6 +137,14 @@ extension HubRuntime {
     func refreshNativeTools() async {
         guard !stopped, !Task.isCancelled, !native.toolsRefreshing else { return }
         native.toolsRefreshing = true
+        await finishNativeToolsRefresh()
+    }
+    func startNativeToolsRefresh() {
+        guard !stopped, !native.toolsRefreshing else { return }
+        native.toolsRefreshing = true
+        Task { [weak self] in await self?.finishNativeToolsRefresh() }
+    }
+    private func finishNativeToolsRefresh() async {
         defer { native.toolsRefreshing = false }
         while !stopped, !Task.isCancelled {
             let generation = native.generation

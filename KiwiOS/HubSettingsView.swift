@@ -8,10 +8,35 @@ struct HubSettingsView: View {
     @State private var loginError: String?
     @State private var secretName = ""
     @State private var secretValue = ""
+    @State private var repository = ""
+    @State private var commit = ""
+    @State private var pluginPath = "."
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Settings").font(.largeTitle)
+                HStack {
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                        .frame(width: 64, height: 64)
+                        .accessibilityLabel("KiwiOS app icon")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Attended setup").font(.largeTitle)
+                        Text("Use the web UI for day-to-day administration. These controls stay on the Mac because they can require local trust or macOS prompts.")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                if let error = runtime.operationError {
+                    HStack(alignment: .top) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text(error).textSelection(.enabled)
+                        Spacer()
+                        Button("Dismiss") { runtime.clearError() }
+                    }
+                    .padding(12).background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                }
                 GroupBox("Operation mode") {
                     VStack(alignment: .leading, spacing: 12) {
                         Picker("Mode", selection: Binding(get: { runtime.mode }, set: { mode in Task { await runtime.setMode(mode) } })) {
@@ -80,33 +105,121 @@ struct HubSettingsView: View {
                         Text("Only declared names are delivered to an enabled plugin. Reads never open a Keychain prompt.").font(.caption).foregroundStyle(.secondary)
                     }.padding(8)
                 }
-                GroupBox("Sidebar pages") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(runtime.plugins) { plugin in
-                            ForEach(plugin.manifest.ui.sidebar) { item in
-                                let key = "\(plugin.id)/\(item.id)"
-                                HStack {
-                                    Toggle("\(plugin.manifest.name): \(item.label)", isOn: Binding(get: { runtime.layout.sidebar.contains(key) }, set: { included in
-                                        var layout = runtime.layout
-                                        if included { layout.sidebar.append(key) } else { layout.sidebar.removeAll { $0 == key } }
-                                        Task { await runtime.changeLayout(layout) }
-                                    }))
-                                    Button("Move up", systemImage: "arrow.up") {
-                                        var layout = runtime.layout
-                                        if let index = layout.sidebar.firstIndex(of: key), index > 0 { layout.sidebar.swapAt(index, index - 1) }
-                                        Task { await runtime.changeLayout(layout) }
-                                    }.labelStyle(.iconOnly).accessibilityLabel("Move \(item.label) up")
-                                }
-                            }
-                        }
-                    }.padding(8)
-                }
+                repositoryInstallation
+                localPluginSetup
             }.padding(28).frame(maxWidth: 900, alignment: .leading)
         }
-        .navigationTitle("Settings")
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginEnabled = SMAppService.mainApp.status == .enabled
+            Task { await runtime.refreshDoctor() }
         }
+        .sheet(item: $runtime.pendingReview) { PluginApprovalView(review: $0).environmentObject(runtime) }
+        .sheet(item: $runtime.pendingInstallation) { InstallationApprovalView(review: $0).environmentObject(runtime) }
+        .sheet(item: $runtime.pendingRemoval) { PluginRemovalView(review: $0).environmentObject(runtime) }
+        .sheet(item: $runtime.native.pendingConfirmation) { confirmation in
+            VStack(alignment: .leading, spacing: 18) {
+                Text(confirmation.title).font(.title2)
+                if let detail = confirmation.operation.confirmationDetail { Text(detail).textSelection(.enabled) }
+                Text("KiwiOS will record and run this operation after confirmation. Confirmation expires after one minute.")
+                HStack {
+                    Button("Cancel", role: .cancel) { Task { await runtime.cancelNativeConfirmation(confirmation) } }
+                    Spacer()
+                    Button("Confirm action") { Task { await runtime.confirmNativeOperation(confirmation) } }
+                        .buttonStyle(.borderedProminent)
+                }
+            }.padding(28).frame(width: 480)
+        }
+    }
+
+    private var repositoryInstallation: some View {
+        GroupBox("Install or update an exact revision") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Use a public GitHub HTTPS repository and a complete commit SHA. Branches, tags, and abbreviated SHAs are not accepted.")
+                    .font(.caption).foregroundStyle(.secondary)
+                TextField("https://github.com/owner/repository", text: $repository)
+                    .textContentType(.URL)
+                TextField("40-character commit SHA", text: $commit)
+                    .font(.body.monospaced())
+                TextField("Plugin subfolder (use . for repository root)", text: $pluginPath)
+                HStack {
+                    if runtime.marketplaceBusy { ProgressView().controlSize(.small) }
+                    Spacer()
+                    Button("Stage for review") {
+                        Task {
+                            await runtime.stageInstallation(
+                                repository: repository.trimmingCharacters(in: .whitespacesAndNewlines),
+                                commit: commit.trimmingCharacters(in: .whitespacesAndNewlines),
+                                path: pluginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(runtime.mode != .setup || runtime.marketplaceBusy
+                              || repository.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || !validCommit || pluginPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if runtime.mode != .setup {
+                    Text("Switch to Attended setup mode before staging or approving repository code.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }.padding(8)
+        }
+    }
+
+    private var localPluginSetup: some View {
+        GroupBox("Plugin trust and configuration") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Adding trusted code, supplying write-only configuration, and removing installed data are attended operations.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reload", systemImage: "arrow.clockwise") { Task { await runtime.reload() } }
+                        .labelStyle(.iconOnly).accessibilityLabel("Reload plugin sources")
+                }
+                if let error = runtime.discoveryError { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
+                if runtime.plugins.isEmpty { Text("No plugin sources are available.").foregroundStyle(.secondary) }
+                ForEach(runtime.plugins) { plugin in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(plugin.manifest.name).font(.headline)
+                            Text(plugin.manifest.version).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            Spacer()
+                            Text(plugin.lifecycle.rawValue).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text(plugin.message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        HStack {
+                            if isAdded(plugin) {
+                                Button("Remove…", role: .destructive) { runtime.requestRemoval(pluginID: plugin.id) }
+                                    .disabled(runtime.mode != .setup)
+                            } else {
+                                Button("Review and add…") { Task { await runtime.requestEnable(pluginID: plugin.id) } }
+                            }
+                        }
+                        if isAdded(plugin), runtime.schema(pluginID: plugin.id) != nil {
+                            DisclosureGroup("Configuration") {
+                                PluginContentView(plugin: plugin)
+                            }
+                        }
+                    }
+                    .padding(12).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                }
+                if runtime.mode != .setup {
+                    Text("Switch to Attended setup mode before removing a plugin or its installed data.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }.padding(8)
+        }
+    }
+
+    private var validCommit: Bool {
+        let value = commit.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.count == 40 && value.unicodeScalars.allSatisfy {
+            (48...57).contains($0.value) || (65...70).contains($0.value) || (97...102).contains($0.value)
+        }
+    }
+
+    private func isAdded(_ plugin: PluginState) -> Bool {
+        [.active, .needsSetup, .missingDependency].contains(plugin.lifecycle)
     }
     private func selectDirectory() {
         let panel = NSOpenPanel()

@@ -5,7 +5,7 @@ A plugin is a trusted folder containing `plugin.toml` and executable commands. T
 | Manifest surface | Current status |
 |---|---|
 | Metadata, checks, actions, durations | decoded and validated |
-| UI pages, sidebar, widgets, form descriptors, and sources | decoded, validated, and rendered in the native app and PWA |
+| UI pages, sidebar, widgets, form descriptors, and sources | decoded, validated, and rendered by the host-owned PWA |
 | Optional Watcher session | status-check and start-action references decoded, validated, and rendered by the optional Watcher plugin |
 | Referenced `./` executables | validated as local regular executable files |
 | Required dependencies | decoded; versions, missing requirements, and cycles validated |

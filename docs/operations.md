@@ -6,7 +6,7 @@ KiwiOS provides a native control plane and an optional tailnet UI for a Mac that
 
 An operator performs initial setup at the Mac or through an attended Screen Sharing session:
 
-1. install and launch the signed app;
+1. install and launch the signed menu-bar app;
 2. enable the `SMAppService` login item for the owning Aqua user and resolve any System Settings approval it reports;
 3. keep the Mac awake when remote availability is required;
 4. install/sign in to Tailscale and let KiwiOS own one tailnet-only Serve origin when remote access is wanted;
@@ -37,7 +37,7 @@ Mode changes close both the runtime policy gate and queue admission before inspe
 
 Monitor accepts both `/dev/diskN` and Apple Silicon `IOService:` device identifiers reported by smartmontools. It maps registry nodes to physical disks and prefers a mounted volume's name from Disk Arbitration metadata, falling back to the hardware model or drive type. It does not traverse mounted volumes merely to discover those names.
 
-The optional Monitor plugin samples CPU, memory, thermal pressure, and SMART drive temperatures after it is added. It requires the `smartmontools` Homebrew formula and reports whether that formula is installed. In attended setup, KiwiOS can install missing declared formulae only after showing and confirming the exact list. Canceling or failing that setup returns the plugin to Add. KiwiOS records formulae it installed and, during plugin removal, offers owned unused formulae for explicit cleanup. It keeps packages installed outside KiwiOS, shared with another added plugin, required by an installed Homebrew package, or not safely verifiable. Some external enclosures do not expose SMART data on macOS. The Brew view reads a bounded installed inventory through Homebrew's JSON interface and keeps metadata updates and upgrades behind native confirmation. The Tools view adds bounded status for regular applications, at most 50 owned current-user LaunchAgent plists (with a 500-entry directory scan limit), FileVault, low-power mode, configured SSH peers, and notification authorization. Plist reads are bounded before allocation, duplicate labels are unavailable for actions, and status probes run in small batches with a 15-second aggregate admission budget plus bounded in-flight teardown. Tools refreshes after success or possible partial-effect failure, including notification authorization. Monitor and `volume-health` are the current phase-3 plugin consumers.
+The optional Monitor plugin samples CPU, memory, thermal pressure, and SMART drive temperatures after it is added. It requires the `smartmontools` Homebrew formula and reports whether that formula is installed. In attended setup, KiwiOS can install missing declared formulae only after showing and confirming the exact list. Canceling or failing that setup returns the plugin to Add. KiwiOS records formulae it installed and, during plugin removal, offers owned unused formulae for explicit cleanup. It keeps packages installed outside KiwiOS, shared with another added plugin, required by an installed Homebrew package, or not safely verifiable. Some external enclosures do not expose SMART data on macOS. The web Brew view reads a bounded installed inventory through Homebrew's JSON interface; metadata changes and upgrades stay attended. Web Tools adds bounded status for regular applications, at most 50 owned current-user LaunchAgent plists (with a 500-entry directory scan limit), FileVault, low-power mode, configured SSH peers, and notification authorization. Plist reads are bounded before allocation, duplicate labels are unavailable for actions, and status probes run in small batches with a 15-second aggregate admission budget plus bounded in-flight teardown. Prompt-free web operations revalidate process identity, configured peer names, and notification authorization before execution. Monitor and `volume-health` are the current phase-3 plugin consumers.
 
 macOS owns removable-volume consent and remembers it against the app's code-signing identity. Release builds use a stable signature. Developers should run one KiwiOS build at a time and set `KIWIOS_DEVELOPMENT_TEAM` when using `scripts/run.sh`; an ad-hoc signature changes identity on rebuild and can cause repeated privacy prompts. Doctor cannot grant TCC access on the user's behalf.
 
@@ -49,9 +49,9 @@ SSH peers must be added by name during attended setup. Jobs persist the peer nam
 
 ## Remote network and identity
 
-The native UI is available locally and talks to the app directly. Remote HTTP uses a dedicated loopback backend published only through KiwiOS-owned Tailscale Serve; it is not a supported localhost-browser endpoint, and Funnel is rejected. Every verified human identity allowed by the operator's Tailscale policy is an administrator. State-changing requests require and record that Serve-supplied identity; missing identity and tagged-node requests fail closed. The current remote mutation contract covers plugin checks, actions, cancellation, disablement, and nonsecret configuration. Native host actions remain local-only.
+The local menu-bar and attended setup surfaces talk to the runtime directly. The primary web UI uses a dedicated loopback backend published only through KiwiOS-owned Tailscale Serve; it is not a supported localhost-browser endpoint, and Funnel is rejected. Every verified human identity allowed by the operator's Tailscale policy is an administrator. State-changing requests require and record that Serve-supplied identity; missing identity and tagged-node requests fail closed. The remote contract covers plugin checks/actions/cancellation/disablement/configuration, Doctor refresh, layout, source reload, revalidated process termination, named SSH probes, and already-authorized notification delivery. Prompt-capable host operations remain attended.
 
-The backend must not be exposed through another reverse proxy or bound to LAN interfaces. Tailscale Serve removes caller-supplied identity headers before adding its own, but a same-user process can still reach loopback and remains outside the v1 boundary. State changes also require the exact KiwiOS origin, a session-bound CSRF token, one-use request IDs, JSON content type, and bounded request size. Browser content and plugin text are untrusted input. KiwiOS continuously validates the exact Serve ownership record and disables the backend if it changes. Loss of Tailscale leaves the local UI and local logs as recovery paths.
+The backend must not be exposed through another reverse proxy or bound to LAN interfaces. Tailscale Serve removes caller-supplied identity headers before adding its own, but a same-user process can still reach loopback and remains outside the v1 boundary. State changes also require the exact KiwiOS origin, a session-bound CSRF token, one-use request IDs, JSON content type, and bounded request size. Browser content and plugin text are untrusted input. KiwiOS continuously validates the exact Serve ownership record and disables the backend if it changes. Loss of Tailscale leaves the menu-bar status and attended setup window as recovery paths.
 
 ## Failure behavior
 
@@ -59,10 +59,10 @@ The backend must not be exposed through another reverse proxy or bound to LAN in
 |---|---|
 | User not logged in | KiwiOS and supervised work are unavailable |
 | FileVault awaiting unlock | same; no misleading “healthy” state |
-| Tailscale/Serve down or ownership record changed | local UI remains available; remote UI is unavailable |
+| Tailscale/Serve down or ownership record changed | menu-bar recovery remains available; web UI is unavailable |
 | Required volume/tool missing | affected checks/actions are blocked, not redirected silently |
 | TCC/Keychain/license prerequisite missing or unknown | plugin becomes `needs-setup`; execution remains blocked instead of prompting |
-| Plugin or native command fails | job/check fails; other plugins and native UI continue |
+| Plugin or native command fails | job/check fails; other plugins and the menu-bar runtime continue |
 | Plugin or native command times out | job/check records `timed-out`; bounded teardown runs |
 | KiwiOS exits during a job | job becomes interrupted; operator decides whether to rerun |
 

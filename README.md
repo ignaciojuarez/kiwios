@@ -1,15 +1,15 @@
 # KiwiOS
 
-**Mac mini hub.** KiwiOS is a native macOS app being built to monitor and administer an always-on Mac through one UI on your tailnet.
+**Mac mini hub.** KiwiOS is a native macOS menu-bar service with a tailnet web UI for monitoring and administering an always-on Mac.
 
 It is not an operating system: macOS remains in charge. In the target design, KiwiOS owns execution, jobs, permissions, and UI; plugins are folders containing a manifest and executable commands. There is no Docker runtime and plugins do not ship HTML.
 
 > [!IMPORTANT]
-> KiwiOS is pre-alpha. The local plugin platform now includes strict manifest/config/dependency validation, bundled and development discovery, explicit source approval, durable action jobs and scheduled checks, typed results, Keychain secrets, seven native UI kinds, and setup diagnostics. The working tree also includes a tailnet PWA, a dedicated installed-package Brew view, native Tools, exact-commit repository installation, and optional Monitor, Volume Health, and Watcher plugins. The unsigned Debug app builds with Xcode 27; signed-app lifecycle, accessibility, and broader macOS integration validation remain pending. MCP is deferred; the bundled curated catalog is empty and has not been published externally.
+> KiwiOS is pre-alpha. The signed-app target now runs without a Dock icon as a compact menu-bar service; its authenticated tailnet PWA is the primary control plane. The web UI includes every plugin UI kind, Home/sidebar layout, plugin configuration and status, Doctor, Events, prompt-free host tools, and the installed Homebrew inventory. Attended setup on the Mac remains deliberately small and owns prompt-capable trust, Keychain, launch-at-login, exact-revision installation, and Tailscale publication. The unsigned Debug app builds with Xcode 27; signed-app lifecycle, accessibility, and broader macOS integration validation remain pending.
 
 ## Design
 
-- One signed Aqua app and one responsive UI.
+- One signed menu-bar Aqua process and one responsive tailnet web UI.
 - Tailscale Serve is the remote boundary; the HTTP backend stays on loopback and Funnel is unsupported.
 - Plugins declare data and actions; KiwiOS renders the UI.
 - Plugins are trusted executable code running as the logged-in user. Manifest permissions disclose intent and gate KiwiOS services; they are not a sandbox.
@@ -37,14 +37,14 @@ To build and open the Debug app in one step, run `./scripts/run.sh`. It defaults
 
 ## Local use
 
-1. Follow the setup steps on **Home**, then open **Plugins**, inspect the bundled `hello-check` source and disclosures, and choose **Add**. Checks run when added; actions remain behind the host confirmation dialog.
-2. Run actions from their plugin views and use **Events** for one current diagnostic line per plugin. Unfinished actions are marked interrupted after a restart and never automatically replayed.
-3. In **Settings**, enable launch at login, inspect Doctor, and optionally choose one development plugin directory. Missing or unknown macOS prerequisites block the affected plugin.
-4. Add or reorder Home widgets and sidebar pages. Configuration and layout survive relaunch; secret fields are stored in Keychain.
+1. Open **Attended Setup…** from the menu bar. Enable launch at login, resolve Doctor findings, and optionally choose a development plugin directory or stage an exact GitHub revision.
+2. Review plugin source and disclosures locally, save prompt-capable secrets, then enable the tailnet web UI through Tailscale Serve.
+3. Choose **Open Web UI** from the menu. Home, plugin pages, Events, Tools, Brew inventory, plugin configuration, layout, and prompt-free settings live there.
+4. Arrange widgets and sidebar pages directly on **Home**; use **Settings** to inspect setup state. Configuration and layout survive relaunch; secret values remain in Keychain and never enter the remote snapshot.
 
-Add the optional **Monitor** plugin for CPU, memory, thermal pressure, and SMART drive temperatures. Its declared Homebrew requirements are shown as installed or missing; after showing the exact formulae and receiving confirmation, KiwiOS installs them through Homebrew. Use **Brew** to inspect installed formulae, casks, versions, dependencies, and updates. Add **Watcher** when plugins declaring persistent external sessions should be summarized in one widget/page. Use **Tools** for other confirmed native work. In **Discover**, stage an exact GitHub commit, inspect its source and disclosures, and approve installation explicitly.
+Add the optional **Monitor** plugin for CPU, memory, thermal pressure, and SMART drive temperatures. Its declared Homebrew requirements are shown and installed only after attended confirmation. **Brew** provides a searchable installed inventory; **Tools** provides prompt-free host status plus the remote-safe process, named SSH, and authorized notification actions. Add **Watcher** to summarize plugins that declare persistent sessions.
 
-To connect a phone, complete Doctor and launch-at-login setup, connect both devices to Tailscale, then use **Remote access** on Home or in Settings. KiwiOS checks for conflicting Serve/Funnel settings before publishing its loopback backend. Open the displayed HTTPS address on the phone; the PWA includes plugin pages, Events, and Status & setup. Remote access starts only after the Mac user logs in and unlocks FileVault.
+Remote access starts only after the owning user logs in and unlocks FileVault. KiwiOS rejects conflicting Serve/Funnel settings, binds HTTP only on loopback, and never opens a macOS prompt from a browser request.
 
 Plugin authors can copy the [plugin template](examples/plugin-template/) and follow the [author-to-install walkthrough](docs/plugin-authoring.md). No Swift or SDK is required.
 

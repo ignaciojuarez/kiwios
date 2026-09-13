@@ -252,6 +252,15 @@ actor NativeCapabilities {
         namedSSHPeers = configured
     }
 
+    func terminableProcess(pid: Int32) async throws -> NativeProcessIdentity {
+        guard pid > 0, let process = await Self.aquaProcesses().first(where: { $0.pid == pid }),
+              process.canTerminate else {
+            throw NativeCapabilityError.blocked("Choose a current non-Apple Aqua app")
+        }
+        _ = try await Self.verifiedProcess(process)
+        return process
+    }
+
     func toolsSnapshot() async -> NativeToolsSnapshot {
         async let brew = homebrewStatus()
         async let power = powerStatus()

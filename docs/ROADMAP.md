@@ -4,7 +4,7 @@ Each phase ends in a working vertical slice. The API 1 plugin and watcher docume
 
 ## 0 — public foundation
 
-- [x] macOS app shell and MIT license
+- [x] no-Dock-icon macOS menu-bar shell and MIT license
 - [x] authoritative product, architecture, development, testing, plugin, watcher, UI, permission, operations, and catalog docs
 - [x] tiny `hello-check` source fixture
 - [x] public build prerequisites and contributor guide
@@ -13,12 +13,12 @@ Each phase ends in a working vertical slice. The API 1 plugin and watcher docume
 
 ## 1 — local plugin platform
 
-Implementation of 1A–1D is present in the working tree. Build/test execution and the manual macOS release gates are deferred until Xcode is installed; checked implementation items below do not claim those gates passed.
+Implementation of 1A–1D is present in the working tree. Unsigned Xcode 27 build and unit-test execution have passed; checked implementation items do not claim the remaining signed-app and manual release gates passed.
 
 ### Completed foundation
 
 - [x] Decode the core `kiwios_api = "1"` metadata, checks, and actions.
-- [x] Bundle/load `hello-check`; run a real check and require confirmation in the native UI before its sample action.
+- [x] Bundle/load `hello-check`; run a real check and require confirmation in the host-owned UI before its sample action.
 - [x] Add bounded local execution, process-group timeout/cancellation, and initial `kiwios.watch/1` decoding.
 - [x] Add initial regression tests for SemVer, malformed output, unsafe executable paths, descendant teardown, and duplicate-run admission.
 
@@ -42,10 +42,11 @@ Optional-dependency contribution behavior and supervised-child declarations are 
 - [x] Route checks and actions through one queue with resource locks, scheduling, cancellation, bounded file logs, and restart recovery.
 - [x] Centralize confirmation and authorization; implement enable/disable, disclosure approval, temporary secret delivery, and log redaction.
 
-### 1D — host-owned UI and setup
+### 1D — web-primary host UI and attended setup
 
-- [x] Render all seven API 1 kinds: `stat`, `checks`, `actions`, `table`, `log`, `form`, and `watchers`.
+- [x] Render all seven API 1 kinds in the PWA: `stat`, `checks`, `actions`, `table`, `log`, `form`, and `watchers`.
 - [x] Add setup/remote mode and Doctor without prompting remotely.
+- [x] Replace the native dashboard with a menu-bar status surface and compact attended setup for prompt-capable work.
 - [ ] Complete and run dependency, symlink-race, scheduling, persistence, authorization, accessibility, and recovery validation under Xcode 27. Regression sources cover manifest/config/dependency and watcher behavior; runtime fixtures now use explicit approval. Signed-app, VoiceOver, sleep/wake, permissions, and crash/recovery journeys remain release gates.
 
 Current setup limits are explicit: API 1 accepts Accessibility and Screen Recording because they have prompt-free probes; unprobeable TCC prerequisites are rejected by manifest validation. Repository installation and exact Git revisions are implemented in phase 4; local approvals bind the selected source directory and exact manifest/content digests.
@@ -57,29 +58,30 @@ Exit: a technical user can clone, build, validate, explicitly enable `hello-chec
 - [x] Add one embedded loopback HTTP server and a responsive PWA for all seven UI kinds.
 - [x] Implement explicit publication through KiwiOS-owned, tailnet-only Tailscale Serve, with ownership checks on startup and recovery.
 - [x] Implement identity-bound sessions, origin/CSRF checks, one-use confirmations, audit attribution, and replay protection.
-- [x] Add phone navigation, plugin-owned action state, Events, and Status & setup with Doctor findings.
+- [x] Add persistent phone navigation, plugin-owned action state, Events, Tools, Brew, Plugins, and Settings with Doctor findings.
+- [x] Add web layout/configuration parity and guarded prompt-free native operations without exposing arbitrary PIDs, SSH destinations, or notification authorization.
 - [x] Disable mutations when disconnected, label old results, preserve focused configuration edits during polling, and keep secrets in attended setup.
 - [ ] Verify transport/security and exercise phone, desktop browser, sleep/wake, logout/login, and FileVault restart behavior after Xcode is ready.
 
 Exit remains unverified: after login, a tailnet administrator can inspect status and run a confirmed action from a phone; before login, the product states that it is unavailable.
 
-## 3 — useful native capabilities
+## 3 — useful host capabilities
 
 - [x] Implement optional CPU, memory, thermal, and SMART drive-temperature checks as the bundled Monitor plugin; uptime is intentionally omitted.
-- [x] Implement bounded process controls, LaunchAgent status/restart, saved SSH peer probes, power checks, and notifications in Tools, plus an installed formula/cask inventory and Homebrew actions in a dedicated Brew tab.
+- [x] Implement bounded process controls, LaunchAgent status, saved SSH peer probes, power checks, and notifications in web Tools, plus an installed formula/cask inventory in web Brew.
 - [x] Require attended setup for prompt-requiring operations and explicit native confirmation where applicable; privileged restart remains unsupported.
-- [x] Add a Home setup journey derived from Doctor, plugin enablement, launch-at-login, and actual remote availability.
+- [x] Add a web Home setup journey derived from Doctor, plugin enablement, launch-at-login, and actual remote availability.
 - [ ] Exercise native services and permission/lifecycle recovery on macOS after Xcode is ready.
 
-Native actions currently run from the Mac UI. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
+Prompt-free, identity-bound operations can run from the PWA. LaunchAgent changes, Homebrew mutations, notification authorization, secrets, trust, and other prompt-capable operations remain in attended setup. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
 
 ## 4 — discovery and explicit install
 
 - [x] Implement repository-plus-exact-SHA staging, review, install/update, and complete KiwiOS-owned-content removal.
-- [x] Add in-app GitHub search for the `kiwios-plugin` topic with cached/rate-limited results.
+- [ ] Expose the implemented cached/rate-limited GitHub discovery through the web-primary product; exact-SHA installation already remains available in attended setup.
 - [x] Show source, commit, license, dependencies, and disclosure changes before trust; bind activation to approved repository, commit, and digests.
 - [x] Prepare a strict bundled catalog format and pull-request review policy. The catalog deliberately contains no approved entries.
-- [x] Add a copyable plugin template and an app-based author-to-install walkthrough.
+- [x] Add a copyable plugin template and a menu-bar/web author-to-install walkthrough.
 - [ ] Publish and maintain the curated catalog repository, review real exact commits, and add approved entries.
 - [ ] Validate install/update interruption, incompatible config, source tampering, and removal/reinstall recovery after Xcode is ready.
 

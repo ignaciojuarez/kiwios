@@ -4,7 +4,7 @@ Tests protect public contracts and recovery paths, not private implementation de
 
 ## Current implementation handoff
 
-On September 13, 2026, the unsigned Debug app built successfully with Xcode 27.0 (27A266a) for arm64 macOS, and all 64 tests passed with zero failures. Launch opened the application window. Runtime tests cover approved plugin execution, cancellation, output handling, timeout overrides, Homebrew installed-inventory decoding and requirement detection, explicit Homebrew install/uninstall descriptions, durable KiwiOS formula ownership, safe cleanup selection, bundled-source identity migration, Apple Silicon SMART device discovery, macOS awk compatibility for Volume Health, and action-only file logging; fixtures use isolated persistence. These results do not complete the release gates: signed-app lifecycle, setup, keyboard/VoiceOver, sleep/wake, browser workflows, and platform permission behavior still need manual validation.
+On September 13, 2026, the unsigned Debug menu-bar target built successfully with Xcode 27.0 (27A266a) for arm64 macOS, and all 71 tests passed with zero failures. The built bundle reports `LSUIElement = true`, and the primary PWA was rendered through macOS WebKit at desktop and phone sizes across Home, Tools, Brew, Plugins, Events, Settings, and a plugin progress page. Runtime tests cover approved plugin execution, cancellation, output handling, timeout overrides, Homebrew inventory, source identity, native-operation confirmation, exact remote mutation shapes and approved plugin restoration, settings/layout validation, and the existing monitor and watcher paths; fixtures use isolated persistence. These results do not complete the release gates: signed-app lifecycle, menu-bar interaction, keyboard/VoiceOver, sleep/wake, real Tailscale browser sessions, and platform permission behavior still need manual validation.
 
 ## Manifest and installation
 
@@ -40,6 +40,7 @@ Validation never executes plugin code. Installer validation should use local rep
 - Failed remote startup must preserve enabled intent for bounded retry; stale listener/monitor completion must not close a newer instance, and cancellation must not interrupt exact-owned Serve cleanup.
 - Installed digests must survive tampered-source reload/disable without accepting those bytes under an approved SHA.
 - PWA phone navigation, typed enum/config values, read-only secret guidance, preservation of unsaved drafts across disconnects, confirmation dismissal after earlier acceptance, and disconnected mutation gating.
+- Remote native-tool snapshots and mutation shapes, one-use identity-bound process confirmation, PID identity revalidation, named-peer-only SSH probes, and already-authorized notification delivery.
 - Remote mode blocks any operation that could open TCC, Keychain, Gatekeeper, license, device-trust, or administrator prompts.
 
 Use an injectable verified-identity boundary in tests. Do not make authorization decisions from caller-supplied HTTP headers.

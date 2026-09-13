@@ -4,11 +4,19 @@ All notable user-visible changes will be recorded here.
 
 ## Unreleased
 
+- Add a remote Retry/Enable control for unchanged, locally approved disabled plugins; clearly route missing Homebrew dependencies, new sources, and changed code to Attended Setup without allowing remote Homebrew mutation.
+- Replace the full macOS window with a no-Dock-icon menu-bar service and a compact attended-setup window. Move Home, plugin pages, Events, Tools, Brew, layout, Doctor, and public plugin settings into the tailnet PWA; add guarded browser operations for process termination, named SSH probes, and already-authorized notifications.
+- Redesign the PWA around the supplied terminal-workbench references: near-black gridded surfaces, monospaced typography, hairline panels, geometric icons, restrained kiwi/amber status color, segmented progress bars, shorter copy, and persistent responsive navigation.
+- Remove the unreachable native dashboard, Events, Brew, Tools, Home, and duplicate plugin-rendering code after the web-primary migration.
+
 - Keep exact-owned Tailscale Serve cleanup running when its UI or health-monitor task is canceled, avoiding a false `Swift.CancellationError` recovery warning.
 
 - Add a dedicated Brew sidebar tab with a searchable four-column installed inventory, local app icons for casks, formula install reasons, versions, dependency relationships, and existing confirmed update/upgrade actions.
 
 - Use the bundled Icon Composer design as the macOS app icon.
+- Use the supplied kiwi artwork for the native app icon, PWA icons, and favicon; show it in attended setup and bring that window to the front when opened from the menu bar.
+- Move Home/sidebar customization onto Home, repair layout actions dropped behind polling, prune stale contribution IDs after reload, and prevent polls from rendering partial reload state or rebuilding unchanged pages.
+- Give Tools refresh an inline collecting state instead of a misleading Saving warning; color Events terminal lines by their written severity; use the transparent pixel kiwi in the sidebar and remove the decorative top rule.
 
 - Keep Home stat widgets stable while checks refresh, hide their result timestamp and descriptive source metadata, and omit timestamps from routine check rows.
 
