@@ -91,4 +91,4 @@ The user owns Home composition, sidebar order, widget visibility, and whether a 
 
 New visual needs should first be tested against an existing kind. After API 1 freezes, adding a kind requires a new `kiwios_api` version.
 
-Plugin action views render retained, bounded progress. Native Tools keeps failed SSH peer saves open for correction and refreshes affected host state after operations.
+Plugin action views render retained, bounded progress. Brew is a host-owned sidebar tab with a four-column searchable installed formula/cask inventory, local application icons when cask artifacts expose them, versions, dependency relationships, and attended update/upgrade actions. Native Tools keeps failed SSH peer saves open for correction and refreshes affected host state after operations.

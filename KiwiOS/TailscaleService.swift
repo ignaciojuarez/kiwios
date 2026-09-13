@@ -181,7 +181,7 @@ actor TailscaleService {
     func stop() async throws {
         guard managedTrust != nil || publicationAttemptOrigin != nil else { return }
         guard let executable = resolveExecutable() else { throw TailscaleServiceError.executableMissing }
-        let current = try await run(executable, ["serve", "status", "--json"])
+        let current = try await runCleanup(executable, ["serve", "status", "--json"])
         if let trust = managedTrust {
             guard Self.digest(current) == trust.configurationDigest,
                   Self.matchesManagedConfiguration(current, origin: trust.origin) else {
@@ -198,7 +198,7 @@ actor TailscaleService {
         } else {
             return
         }
-        _ = try await run(executable, ["serve", "--https=\(Self.httpsPort)", "off"])
+        _ = try await runCleanup(executable, ["serve", "--https=\(Self.httpsPort)", "off"])
         managedTrust = nil
         publicationAttemptOrigin = nil
     }
@@ -215,6 +215,12 @@ actor TailscaleService {
         let discovered = Self.findExecutable()
         executable = discovered
         return discovered
+    }
+
+    /// Cleanup must finish even when its UI or health-monitor task was canceled.
+    private func runCleanup(_ executable: URL, _ arguments: [String]) async throws -> Data {
+        let run = self.run
+        return try await Task.detached { try await run(executable, arguments) }.value
     }
 
     private func origin(executable: URL) async throws -> URL {

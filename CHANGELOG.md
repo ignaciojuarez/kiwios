@@ -4,6 +4,10 @@ All notable user-visible changes will be recorded here.
 
 ## Unreleased
 
+- Keep exact-owned Tailscale Serve cleanup running when its UI or health-monitor task is canceled, avoiding a false `Swift.CancellationError` recovery warning.
+
+- Add a dedicated Brew sidebar tab with a searchable four-column installed inventory, local app icons for casks, formula install reasons, versions, dependency relationships, and existing confirmed update/upgrade actions.
+
 - Use the bundled Icon Composer design as the macOS app icon.
 
 - Keep Home stat widgets stable while checks refresh, hide their result timestamp and descriptive source metadata, and omit timestamps from routine check rows.

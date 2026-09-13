@@ -36,8 +36,114 @@ struct NativeLaunchAgent: Codable, Equatable, Identifiable, Sendable {
 
 enum NativeHomebrewStatus: Codable, Equatable, Sendable {
     case unavailable
-    case available(path: String, outdatedFormulae: [String], outdatedCasks: [String])
+    case available(path: String, packages: [NativeHomebrewPackage])
     case error(path: String, message: String)
+
+    static func decode(path: String, data: Data) throws -> Self {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NativeCapabilityError.commandFailed("Homebrew returned invalid JSON")
+        }
+        guard let rawFormulae = object["formulae"] as? [[String: Any]],
+              let rawCasks = object["casks"] as? [[String: Any]] else {
+            throw NativeCapabilityError.commandFailed("Homebrew returned an unsupported JSON shape")
+        }
+        let formulae = try rawFormulae.map { item -> NativeHomebrewPackage in
+            guard let name = nonempty(item["name"] as? String) else {
+                throw NativeCapabilityError.commandFailed("A Homebrew formula is missing its name")
+            }
+            let installed = item["installed"] as? [[String: Any]] ?? []
+            let stable = nonempty((item["versions"] as? [String: Any])?["stable"] as? String)
+            let revision = item["revision"] as? Int ?? 0
+            return NativeHomebrewPackage(
+                kind: .formula,
+                name: name,
+                displayName: name,
+                qualifiedName: nonempty(item["full_name"] as? String) ?? name,
+                description: nonempty(item["desc"] as? String),
+                tap: nonempty(item["tap"] as? String),
+                installedVersions: installed.compactMap { nonempty($0["version"] as? String) },
+                latestVersion: stable.map { revision > 0 ? "\($0)_\(revision)" : $0 },
+                dependencies: strings(item["dependencies"]).map {
+                    NativeHomebrewDependency(kind: .formula, name: $0)
+                },
+                applicationPath: nil,
+                installedOnRequest: installed.first?["installed_on_request"] as? Bool ?? true,
+                outdated: item["outdated"] as? Bool ?? false,
+                pinned: item["pinned"] as? Bool ?? false,
+                kegOnly: item["keg_only"] as? Bool ?? false
+            )
+        }
+        let casks = try rawCasks.map { item -> NativeHomebrewPackage in
+            guard let name = nonempty(item["token"] as? String) else {
+                throw NativeCapabilityError.commandFailed("A Homebrew cask is missing its token")
+            }
+            let displayName = strings(item["name"]).first ?? name
+            let dependsOn = item["depends_on"] as? [String: Any] ?? [:]
+            let dependencies = strings(dependsOn["formula"]).map {
+                NativeHomebrewDependency(kind: .formula, name: $0)
+            } + strings(dependsOn["cask"]).map {
+                NativeHomebrewDependency(kind: .cask, name: $0)
+            }
+            return NativeHomebrewPackage(
+                kind: .cask,
+                name: name,
+                displayName: displayName,
+                qualifiedName: nonempty(item["full_token"] as? String) ?? name,
+                description: nonempty(item["desc"] as? String),
+                tap: nonempty(item["tap"] as? String),
+                installedVersions: strings(item["installed"]),
+                latestVersion: nonempty(item["version"] as? String),
+                dependencies: dependencies,
+                applicationPath: (item["artifacts"] as? [[String: Any]])?
+                    .first { $0["app"] != nil }
+                    .flatMap { nonempty($0["target"] as? String) },
+                installedOnRequest: item["installed_on_request"] as? Bool ?? true,
+                outdated: item["outdated"] as? Bool ?? false,
+                pinned: item["pinned"] as? Bool ?? false,
+                kegOnly: false
+            )
+        }
+        return .available(path: path, packages: (formulae + casks).sorted {
+            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        })
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
+    }
+
+    private static func strings(_ value: Any?) -> [String] {
+        if let value = value as? String { return nonempty(value).map { [$0] } ?? [] }
+        return (value as? [String] ?? []).compactMap(nonempty)
+    }
+}
+
+enum NativeHomebrewPackageKind: String, Codable, Equatable, Hashable, Sendable {
+    case formula, cask
+}
+
+struct NativeHomebrewDependency: Codable, Equatable, Hashable, Sendable {
+    let kind: NativeHomebrewPackageKind
+    let name: String
+}
+
+struct NativeHomebrewPackage: Codable, Equatable, Hashable, Identifiable, Sendable {
+    var id: String { "\(kind.rawValue):\(qualifiedName)" }
+    let kind: NativeHomebrewPackageKind
+    let name: String
+    let displayName: String
+    let qualifiedName: String
+    let description: String?
+    let tap: String?
+    let installedVersions: [String]
+    let latestVersion: String?
+    let dependencies: [NativeHomebrewDependency]
+    let applicationPath: String?
+    let installedOnRequest: Bool
+    let outdated: Bool
+    let pinned: Bool
+    let kegOnly: Bool
 }
 
 struct NativePowerStatus: Codable, Equatable, Sendable {
@@ -366,17 +472,16 @@ actor NativeCapabilities {
         do {
             let output = try await commandRunner.run(
                 executable: path,
-                arguments: ["outdated", "--json=v2"],
+                arguments: ["info", "--installed", "--json=v2"],
                 environment: Self.brewEnvironment,
-                timeout: 30
+                timeout: 30,
+                maximumOutputBytes: 4 * 1_024 * 1_024
             )
             guard output.exitCode == 0 else { return .error(path: path, message: output.conciseError) }
-            guard let object = try JSONSerialization.jsonObject(with: output.output) as? [String: Any] else {
-                return .error(path: path, message: "Homebrew returned invalid JSON")
+            guard !output.truncated else {
+                return .error(path: path, message: "Installed Homebrew inventory exceeded the 4 MiB limit")
             }
-            let formulae = (object["formulae"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
-            let casks = (object["casks"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
-            return .available(path: path, outdatedFormulae: formulae, outdatedCasks: casks)
+            return try NativeHomebrewStatus.decode(path: path, data: output.output)
         } catch { return .error(path: path, message: error.localizedDescription) }
     }
 
@@ -677,7 +782,8 @@ private struct NativeCommandRunner: Sendable {
         executable: String,
         arguments: [String],
         environment additions: [String: String] = [:],
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        maximumOutputBytes: Int = 64 * 1_024
     ) async throws -> CommandResult {
         guard Self.allowedExecutables.contains(executable),
               FileManager.default.isExecutableFile(atPath: executable) else {
@@ -706,7 +812,8 @@ private struct NativeCommandRunner: Sendable {
         let result = try await ProcessTransport.run(
             configuration: configuration,
             timeout: timeout,
-            maximumOutputBytes: 64 * 1024
+            maximumOutputBytes: maximumOutputBytes,
+            maximumErrorBytes: 64 * 1_024
         )
         if result.timedOut {
             let partial = result.conciseError

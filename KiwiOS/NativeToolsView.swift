@@ -28,7 +28,6 @@ struct NativeToolsView: View {
                     power(snapshot.power)
                     processes(snapshot.processes)
                     launchAgents(snapshot.launchAgents, warning: snapshot.launchAgentWarning)
-                    homebrew(snapshot.homebrew)
                     sshPeers
                     notifications(snapshot.notificationAuthorization)
                     Text("Sampled \(snapshot.sampledAt, style: .relative)")
@@ -90,34 +89,6 @@ struct NativeToolsView: View {
                     let operation = NativeOperation.kickstartLaunchAgent(label: agent.label)
                     Button("Restart") { request(operation) }
                         .disabled(mode == .remote || agent.issue != nil || isBusy(operation))
-                }
-            }
-        }
-    }
-
-    private func homebrew(_ status: NativeHomebrewStatus) -> some View {
-        section("Homebrew", icon: "mug") {
-            switch status {
-            case .unavailable:
-                Text("Homebrew is not installed in a supported location").foregroundStyle(.secondary)
-            case .error(let path, let message):
-                Text(path).font(.caption.monospaced()).textSelection(.enabled)
-                Text(message).foregroundStyle(.orange).textSelection(.enabled)
-            case .available(let path, let formulae, let casks):
-                Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                Text("\(formulae.count) outdated formulae · \(casks.count) outdated casks")
-                HStack {
-                    let update = NativeOperation.homebrewUpdate
-                    Button("Update metadata") { request(update) }
-                        .disabled(mode == .remote || isBusy(update))
-                    let packages = formulae + casks
-                    let upgrade = NativeOperation.homebrewUpgrade(packages: packages)
-                    Button("Upgrade listed items") { request(upgrade) }
-                        .disabled(mode == .remote || packages.isEmpty || packages.count > 50 || isBusy(upgrade))
-                }
-                if mode == .remote {
-                    Text("Homebrew changes are disabled in remote policy mode.")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

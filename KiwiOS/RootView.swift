@@ -9,6 +9,7 @@ struct RootView: View {
         NavigationSplitView {
             List(selection: $selection) {
                 Label("Home", systemImage: "house").tag("home")
+                Label("Brew", systemImage: "mug").tag("brew")
                 Label("Tools", systemImage: "wrench.and.screwdriver").tag("tools")
                 Label("Events", systemImage: "terminal").tag("events")
                 Label("Plugins", systemImage: "puzzlepiece.extension").tag("plugins")
@@ -89,6 +90,14 @@ struct RootView: View {
             openPlugins: { selection = "plugins" },
             openSettings: { selection = "settings" }
         )
+        case "brew": BrewView(
+            status: runtime.native.toolsSnapshot?.homebrew, mode: runtime.mode,
+            isRefreshing: runtime.native.toolsRefreshing,
+            isBusy: { runtime.isNativeBusy($0) },
+            refresh: { await runtime.refreshNativeTools() },
+            request: { runtime.requestNativeOperation($0) }
+        )
+            .task { if runtime.native.toolsSnapshot == nil { await runtime.refreshNativeTools() } }
         case "tools": NativeToolsView(snapshot: runtime.native.toolsSnapshot, mode: runtime.mode,
             peers: runtime.native.peers, isRefreshing: runtime.native.toolsRefreshing,
             isBusy: { runtime.isNativeBusy($0) }, refresh: { await runtime.refreshNativeTools() },
