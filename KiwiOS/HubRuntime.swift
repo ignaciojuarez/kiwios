@@ -62,6 +62,7 @@ final class HubRuntime: ObservableObject {
     var lifecycleVersions: [String: Int] = [:]
     var stateGeneration = 0
     var reloading = false
+    var reloadInProgress = false
     var stopped = false
     var confirmationGrants: [UUID: ActionConfirmation] = [:]
     var consecutiveFailures: [String: Int] = [:]
@@ -136,10 +137,14 @@ final class HubRuntime: ObservableObject {
     }
 
     func reload() async {
-        guard let store, !reloading, !stopped, !modeTransitioning else { return }
+        guard let store, !reloadInProgress, !stopped, !modeTransitioning else { return }
+        reloadInProgress = true
         reloading = true
         stateGeneration += 1
-        defer { reloading = false }
+        defer {
+            reloading = false
+            reloadInProgress = false
+        }
         await queue?.shutdown()
         guard !stopped, !Task.isCancelled else { return }
         schedules.removeAll()
@@ -148,6 +153,7 @@ final class HubRuntime: ObservableObject {
         nativeGrants.removeAll()
         nativeOperationOrigins.removeAll()
         remote.challenges.removeAll()
+        remote.nativeChallenges.removeAll()
         native.pendingConfirmation = nil
         pendingReview = nil
         liveOutput.removeAll()
@@ -273,6 +279,8 @@ final class HubRuntime: ObservableObject {
                 layout.sidebar = plugins.flatMap { plugin in plugin.manifest.ui.sidebar.map { "\(plugin.id)/\($0.id)" } }
                 layout.initialized = true
                 await saveLayout()
+            } else {
+                await normalizeLayout()
             }
             await refreshResults()
         } catch { discoveryError = error.localizedDescription }
@@ -294,6 +302,67 @@ final class HubRuntime: ObservableObject {
                 version: plugin.manifest.version, license: plugin.manifest.license,
                 fingerprint: fingerprint, disclosures: plugin.manifest.permissions.disclosureLines)
         } catch { operationError = error.localizedDescription }
+    }
+
+    /// Browser callers can restore only source that was already approved locally and has not changed.
+    func remoteEnablePrerequisites(pluginID: String) async throws -> [String] {
+        guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store,
+              !pendingRemovalIDs.contains(pluginID),
+              let state = plugins.first(where: { $0.id == pluginID }), [.disabled, .error].contains(state.lifecycle),
+              let record = try await store.plugin(id: pluginID),
+              (!record.enabled || state.lifecycle == .error),
+              record.manifestDigest == fingerprint.manifestDigest,
+              record.contentDigest == fingerprint.contentDigest,
+              sourceMatches(record, plugin: plugin, fingerprint: fingerprint),
+              try await store.hasApproval(pluginID: pluginID, manifestDigest: fingerprint.manifestDigest,
+                  contentDigest: fingerprint.contentDigest, disclosureDigest: fingerprint.manifestDigest,
+                  sourceRepository: approvalSourceIdentity(for: plugin, fingerprint: fingerprint),
+                  sourceCommit: installedRecords[pluginID]?.sourceCommit) else {
+            throw PolicyError.blocked("Enable unchanged, previously approved plugins from the web; review new or changed code in Attended Setup")
+        }
+        if let reason = dependencyBlock(pluginID) { throw PolicyError.blocked(reason) }
+        let checks = await Task.detached { PluginDoctor().inspect(plugin.manifest) }.value
+        if let issue = checks.first(where: { !$0.id.hasPrefix("brew-") && $0.status != .passed }) {
+            throw PolicyError.blocked(issue.detail)
+        }
+        _ = try await configuration?.prepare(plugin)
+        return plugin.manifest.brew.filter { !BrewFormulaStatus.isInstalled($0) }
+    }
+
+    func remoteEnableAvailable(pluginID: String) async -> Bool {
+        guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store,
+              !pendingRemovalIDs.contains(pluginID),
+              let state = plugins.first(where: { $0.id == pluginID }), [.disabled, .error].contains(state.lifecycle),
+              let record = (try? await store.plugin(id: pluginID)) ?? nil,
+              (!record.enabled || state.lifecycle == .error),
+              record.manifestDigest == fingerprint.manifestDigest,
+              record.contentDigest == fingerprint.contentDigest,
+              sourceMatches(record, plugin: plugin, fingerprint: fingerprint) else { return false }
+        return (try? await store.hasApproval(pluginID: pluginID, manifestDigest: fingerprint.manifestDigest,
+            contentDigest: fingerprint.contentDigest, disclosureDigest: fingerprint.manifestDigest,
+            sourceRepository: approvalSourceIdentity(for: plugin, fingerprint: fingerprint),
+            sourceCommit: installedRecords[pluginID]?.sourceCommit)) == true
+    }
+
+    func remoteEnableBlocker(pluginID: String) async -> String? {
+        guard let plugin = loaded[pluginID] else { return "Plugin source is unavailable" }
+        let checks = await Task.detached { PluginDoctor().inspect(plugin.manifest) }.value
+        return checks.first(where: { !$0.id.hasPrefix("brew-") && $0.status != .passed })?.detail
+    }
+
+    func enableApprovedPlugin(pluginID: String, requestedBy: String) async throws {
+        let missing = try await remoteEnablePrerequisites(pluginID: pluginID)
+        guard missing.isEmpty else {
+            throw PolicyError.blocked("Install \(missing.sorted().joined(separator: ", ")) in Attended Setup before enabling this plugin")
+        }
+        guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store else {
+            throw PolicyError.blocked("Review the current setup requirements before enabling this plugin")
+        }
+        try await store.upsertPlugin(record(for: plugin, fingerprint: fingerprint, enabled: true, lifecycle: .needsSetup))
+        consecutiveFailures = consecutiveFailures.filter { !$0.key.hasPrefix(pluginID + "/") }
+        setLifecycle(pluginID, .needsSetup, "Checking setup prerequisites")
+        try await audit("plugin.enabled", pluginID: pluginID, requestedBy: requestedBy)
+        await refreshDoctor()
     }
 
     func approvePlugin(_ review: PluginReview) async {
@@ -696,6 +765,7 @@ final class HubRuntime: ObservableObject {
             nativeGrants.removeAll()
             nativeOperationOrigins.removeAll()
             remote.challenges.removeAll()
+            remote.nativeChallenges.removeAll()
             try await audit("mode.\(value.rawValue)", pluginID: nil)
         } catch { operationError = error.localizedDescription }
         modeTransitioning = false
@@ -813,6 +883,21 @@ final class HubRuntime: ObservableObject {
     }
     func clearError() { operationError = nil }
     func changeLayout(_ changed: HomeLayout) async { layout = changed; await saveLayout() }
+    func normalizeLayout() async {
+        let widgetKeys = Set(plugins.flatMap { plugin in
+            plugin.manifest.ui.widgets.map { "\(plugin.id)/\($0.id)" }
+        })
+        let sidebarKeys = Set(plugins.flatMap { plugin in
+            plugin.manifest.ui.sidebar.map { "\(plugin.id)/\($0.id)" }
+        })
+        let normalized = RemoteLayoutPolicy.normalized(
+            layout, validWidgetKeys: widgetKeys, validSidebarKeys: sidebarKeys
+        )
+        guard normalized.widgets != layout.widgets || normalized.hiddenWidgets != layout.hiddenWidgets
+                || normalized.wideWidgets != layout.wideWidgets || normalized.sidebar != layout.sidebar else { return }
+        layout = normalized
+        await saveLayout()
+    }
     func saveLayout() async {
         do { try await store?.setLayout(key: "home", json: JSONEncoder().encode(layout)) }
         catch { operationError = error.localizedDescription }
@@ -827,6 +912,7 @@ final class HubRuntime: ObservableObject {
         nativeOperationOrigins.removeAll()
         confirmationGrants.removeAll()
         remote.challenges.removeAll()
+        remote.nativeChallenges.removeAll()
         refreshTask?.cancel()
         await startup?.value
         await doctorTask?.value

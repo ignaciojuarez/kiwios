@@ -16,7 +16,16 @@ struct RemoteMutation: Codable, Equatable, Sendable {
         case confirmAction
         case cancelJob
         case disablePlugin
+        case enablePlugin
         case saveConfig
+        case refreshDoctor
+        case saveLayout
+        case reloadPlugins
+        case refreshNativeTools
+        case requestProcessTermination
+        case confirmNativeOperation
+        case probeSSH
+        case deliverNotification
     }
 
     let requestID: UUID
@@ -27,6 +36,40 @@ struct RemoteMutation: Codable, Equatable, Sendable {
     let values: [String: JSONValue]?
     let configRevision: Int64?
     let confirmationToken: String?
+    let widgets: [String]?
+    let hiddenWidgets: [String]?
+    let wideWidgets: [String]?
+    let sidebar: [String]?
+    let pid: Int32?
+    let peerName: String?
+    let title: String?
+    let body: String?
+}
+
+enum RemoteLayoutPolicy {
+    static func validate(
+        widgets: [String], hiddenWidgets: [String], wideWidgets: [String], sidebar: [String],
+        validWidgetKeys: Set<String>, validSidebarKeys: Set<String>
+    ) throws {
+        guard widgets.count == Set(widgets).count, hiddenWidgets.count == Set(hiddenWidgets).count,
+              wideWidgets.count == Set(wideWidgets).count, sidebar.count == Set(sidebar).count,
+              widgets.allSatisfy(validWidgetKeys.contains), hiddenWidgets.allSatisfy(validWidgetKeys.contains),
+              wideWidgets.allSatisfy(validWidgetKeys.contains), sidebar.allSatisfy(validSidebarKeys.contains) else {
+            throw PolicyError.blocked("Layout contains an unknown or duplicate contribution")
+        }
+    }
+
+    static func normalized(
+        _ layout: HomeLayout, validWidgetKeys: Set<String>, validSidebarKeys: Set<String>
+    ) -> HomeLayout {
+        HomeLayout(
+            widgets: layout.widgets.filter(validWidgetKeys.contains),
+            hiddenWidgets: layout.hiddenWidgets.intersection(validWidgetKeys),
+            wideWidgets: layout.wideWidgets.intersection(validWidgetKeys),
+            sidebar: layout.sidebar.filter(validSidebarKeys.contains),
+            initialized: layout.initialized
+        )
+    }
 }
 
 struct RemoteRequestDeadline: Sendable {

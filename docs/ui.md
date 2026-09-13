@@ -2,7 +2,7 @@
 
 KiwiOS owns all pixels: navigation, responsive layout, accessibility, loading/error states, confirmation, and theme. Plugins contribute descriptors in `plugin.toml` and JSON state through `kiwios.watch/1`. They cannot provide HTML, CSS, JavaScript, iframes, routes, or arbitrary links.
 
-The macOS app renders all API 1 kinds with native SwiftUI. The host-owned PWA renders the same descriptors with phone-accessible navigation and horizontally scrollable tables. Inactive plugins contribute no Home widgets or sidebar pages. Home stat widgets omit result timestamps and descriptive source metadata, and retain the previous value until refreshed state arrives. Routine check rows omit result timestamps. Actions expose their state through plugin views, while routine monitoring checks update plugin content without creating visible history or separate log files.
+The host-owned PWA renders all API 1 kinds with phone-accessible navigation and horizontally scrollable tables. The macOS menu-bar app does not duplicate plugin content; its compact attended window handles only trust, secrets, exact-revision installation, prompt-capable setup, and recovery. Inactive plugins contribute no Home widgets or sidebar pages. Home stat widgets omit result timestamps and descriptive source metadata, and retain the previous value until refreshed state arrives. Routine check rows omit result timestamps. Actions expose their state through plugin views, while routine monitoring checks update plugin content without creating visible history or separate log files.
 
 ## Sources
 
@@ -74,13 +74,13 @@ size = "1x1"
 
 A page contains one kind in API 1. A plugin may register zero or more pages, sidebar items, and widgets. Sidebar entries reference a page in the same plugin. `size` is `1x1` or `2x1`; it is only the initial suggestion.
 
-The user owns Home composition, sidebar order, widget visibility, and whether a widget uses its normal or wide presentation. KiwiOS persists those choices. Installing or updating a plugin initializes contributions only when no saved layout exists and does not rewrite an existing layout. Removed plugins have their saved layout entries deleted. Settings remains pinned.
+The user owns Home composition, sidebar order, widget visibility, and whether a widget uses its normal or wide presentation. KiwiOS puts those controls directly below the web Home dashboard and persists each change. Installing or updating a plugin initializes contributions only when no saved layout exists and does not rewrite an existing layout. Removed plugins have their saved layout entries deleted. Settings remains pinned.
 
 ## Host-owned behavior
 
 - Checks and actions distinguish running, succeeded, warning, failed, timed-out, canceled, interrupted, and unavailable results. While a job runs, live progress, state, and bounded logs replace the previous terminal presentation.
 - Buttons are disabled while their lock is held. `confirm = true` always uses a KiwiOS confirmation dialog.
-- Plugins shows one configuration editor rather than repeating declared form pages. Native and PWA editors send changed fields with an expected config revision, retain drafts after a conflict, and require an explicit selection for required enums without a default. Integers use the safe JSON range documented in the plugin contract. Forms render strings, numbers, integers, booleans, and enums. Write-only fields use secure controls, can change only in setup mode, and remain blank to preserve an existing secret.
+- Plugins shows one configuration editor rather than repeating declared form pages. The PWA sends changed public fields with an expected config revision, retains drafts after a conflict, and requires an explicit selection for required enums without a default. Integers use the safe JSON range documented in the plugin contract. Forms render strings, numbers, integers, booleans, and enums. Write-only fields use secure controls only in attended setup, remain blank to preserve an existing secret, and appear remotely only as guidance.
 - Titles, labels, values, and messages are treated as untrusted text and escaped.
 - Every control has a keyboard path and accessibility label derived from its manifest label.
 - Empty collections show an explicit empty state. Old data shows its age. A disconnected PWA labels displayed results as potentially old and disables mutations; it never queues offline actions.
@@ -91,4 +91,4 @@ The user owns Home composition, sidebar order, widget visibility, and whether a 
 
 New visual needs should first be tested against an existing kind. After API 1 freezes, adding a kind requires a new `kiwios_api` version.
 
-Plugin action views render retained, bounded progress. Brew is a host-owned sidebar tab with a four-column searchable installed formula/cask inventory, local application icons when cask artifacts expose them, versions, dependency relationships, and attended update/upgrade actions. Native Tools keeps failed SSH peer saves open for correction and refreshes affected host state after operations.
+Plugin action views render retained, bounded progress. The PWA uses a near-black terminal/workbench system with monospaced typography, thin separators, single-color geometric status marks, and segmented progress bars; severity is always written as text as well as color. Brew is a host-owned web tab with a searchable installed formula/cask inventory. Tools exposes prompt-free power, process, LaunchAgent, SSH-peer, and notification state. Web mutations are limited to revalidated process termination, configured SSH probes, and already-authorized notification delivery; setup-capable mutations remain local.

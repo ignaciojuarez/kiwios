@@ -18,4 +18,5 @@ struct RemoteAccessState: Sendable {
     var origin: URL?
     var message = "Remote access is off"
     var challenges: [String: RemoteActionChallenge] = [:]
+    var nativeChallenges: [String: RemoteNativeChallenge] = [:]
 }

@@ -1,10 +1,10 @@
 # Plugin discovery and catalog
 
-KiwiOS uses GitHub for plugin source and discovery. It does not host packages or operate an executable-code marketplace.
+KiwiOS uses GitHub for immutable plugin source. It does not host packages or operate an executable-code marketplace.
 
 ## Two discovery levels
 
-1. **Community discovery:** KiwiOS queries GitHub repository search for the `kiwios-plugin` topic. These results are unreviewed; users choose whether to trust and install them.
+1. **Community discovery:** cached GitHub search support exists for the `kiwios-plugin` topic, but the web-primary product does not expose it yet. Installation currently starts from an operator-supplied repository and exact commit in attended setup.
 2. **Curated catalog:** KiwiOS reads a bundled, read-only catalog containing metadata for approved exact commits. Catalog inclusion means the manifest, source, license, and basic behavior were reviewed at that SHA. It is not a warranty, security certification, or automatic-update channel. The catalog in the current build has no approved entries; publishing and maintaining it as an external repository remains future operational work.
 
 A catalog entry contains:
@@ -26,7 +26,7 @@ The manifest at `path` must match the entry's ID, version, API, and license. Cat
 
 The app loads `catalog/catalog.json` from its signed resources as read-only data. It rejects malformed entries, duplicate IDs, non-normalized repositories, unsafe paths, and non-exact commits. Selecting a reviewed entry fills its repository, commit, and plugin path; after staging, KiwiOS compares the validated manifest with the catalog metadata before presenting it as that reviewed revision. The catalog never bypasses the ordinary source inspection and trust confirmation.
 
-The in-app result list puts curated commits first, then community repositories by GitHub stars and recent activity. Stars indicate interest, not trust. Search runs only on user request, caches responses with GitHub's validators, and surfaces rate-limit or offline errors without requiring a GitHub token. Authentication can be added later if public API limits become a real constraint.
+When web discovery is added, reviewed commits must remain visually distinct from unreviewed community repositories; stars indicate interest, not trust. The existing search implementation runs only on user request, caches responses with GitHub's validators, and reports rate-limit or offline errors without requiring a GitHub token.
 
 ## Install
 

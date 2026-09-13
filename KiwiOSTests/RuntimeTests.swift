@@ -548,6 +548,38 @@ final class RuntimeTests: XCTestCase {
         await runtime.shutdown()
     }
 
+    @MainActor
+    func testRemoteEnableRestoresAnUnchangedLocallyApprovedPlugin() async throws {
+        let root = try temporaryPlugin(manifest: """
+        id = "remote-enable"
+        name = "Remote Enable"
+        version = "1.0.0"
+        kiwios_api = "1"
+        license = "MIT"
+        """)
+        let runtime = HubRuntime(pluginRoot: root, storageRoot: try temporaryStorage())
+        try await enable("remote-enable", in: runtime)
+        try await runtime.disableApprovedPlugin(pluginID: "remote-enable", requestedBy: "local")
+        let canEnable = await runtime.remoteEnableAvailable(pluginID: "remote-enable")
+        XCTAssertTrue(canEnable)
+
+        runtime.mode = .remote
+        runtime.remote.enabled = true
+        let mutation = try JSONDecoder().decode(RemoteMutation.self, from: Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000031","operation":"enablePlugin","pluginID":"remote-enable"}"#.utf8
+        ))
+        _ = try await runtime.remoteMutate(
+            mutation,
+            identity: RemoteIdentity(login: "owner@example", displayName: "Owner"),
+            deadline: RemoteRequestDeadline(after: .seconds(2))
+        )
+
+        XCTAssertEqual(runtime.plugins.first(where: { $0.id == "remote-enable" })?.lifecycle, .active)
+        let record = try await runtime.store?.plugin(id: "remote-enable")
+        XCTAssertEqual(record?.enabled, true)
+        await runtime.shutdown()
+    }
+
     private func temporaryPlugin(manifest: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -211,6 +211,154 @@ final class ManifestContractCompletionTests: XCTestCase {
         XCTAssertEqual(storedAttempt, attempt)
     }
 
+    func testRemoteLayoutAcceptsOnlyKnownUniqueContributions() throws {
+        try RemoteLayoutPolicy.validate(
+            widgets: ["monitor/temperature"], hiddenWidgets: [], wideWidgets: ["monitor/temperature"],
+            sidebar: ["monitor/status"], validWidgetKeys: ["monitor/temperature"],
+            validSidebarKeys: ["monitor/status"]
+        )
+        XCTAssertThrowsError(try RemoteLayoutPolicy.validate(
+            widgets: ["monitor/temperature", "monitor/temperature"], hiddenWidgets: [], wideWidgets: [],
+            sidebar: [], validWidgetKeys: ["monitor/temperature"], validSidebarKeys: []
+        ))
+        XCTAssertThrowsError(try RemoteLayoutPolicy.validate(
+            widgets: ["unknown/widget"], hiddenWidgets: [], wideWidgets: [], sidebar: [],
+            validWidgetKeys: ["monitor/temperature"], validSidebarKeys: []
+        ))
+    }
+
+    func testRemoteLayoutNormalizationRemovesStaleContributions() {
+        let layout = HomeLayout(
+            widgets: ["removed/widget", "monitor/temperature"],
+            hiddenWidgets: ["removed/widget", "monitor/temperature"],
+            wideWidgets: ["removed/widget"],
+            sidebar: ["removed/page", "monitor/status"],
+            initialized: true
+        )
+        let normalized = RemoteLayoutPolicy.normalized(
+            layout,
+            validWidgetKeys: ["monitor/temperature"],
+            validSidebarKeys: ["monitor/status"]
+        )
+
+        XCTAssertEqual(normalized.widgets, ["monitor/temperature"])
+        XCTAssertEqual(normalized.hiddenWidgets, ["monitor/temperature"])
+        XCTAssertEqual(normalized.wideWidgets, [])
+        XCTAssertEqual(normalized.sidebar, ["monitor/status"])
+        XCTAssertTrue(normalized.initialized)
+    }
+
+    func testRemoteSettingsMutationsDecodeWithoutPluginFields() throws {
+        let doctorData = Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000001","operation":"refreshDoctor"}"#.utf8
+        )
+        try RemoteServer.validateMutationShape(doctorData)
+        let doctor = try JSONDecoder().decode(RemoteMutation.self, from: doctorData)
+        XCTAssertEqual(doctor.operation, .refreshDoctor)
+        let layoutData = Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000002","operation":"saveLayout","widgets":[],"hiddenWidgets":[],"wideWidgets":[],"sidebar":[]}"#.utf8
+        )
+        try RemoteServer.validateMutationShape(layoutData)
+        let layout = try JSONDecoder().decode(RemoteMutation.self, from: layoutData)
+        XCTAssertEqual(layout.widgets, [])
+        XCTAssertEqual(layout.sidebar, [])
+        XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000003","operation":"refreshDoctor","pluginID":"unexpected"}"#.utf8
+        )))
+        let enableData = Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000004","operation":"enablePlugin","pluginID":"monitor"}"#.utf8
+        )
+        try RemoteServer.validateMutationShape(enableData)
+        XCTAssertEqual(try JSONDecoder().decode(RemoteMutation.self, from: enableData).operation, .enablePlugin)
+        XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000005","operation":"enablePlugin"}"#.utf8
+        )))
+    }
+
+    func testRemoteNativeMutationShapesAreExact() throws {
+        let accepted = [
+            #"{"requestID":"00000000-0000-0000-0000-000000000011","operation":"refreshNativeTools"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000012","operation":"requestProcessTermination","pid":123}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000013","operation":"confirmNativeOperation","confirmationToken":"token"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000014","operation":"probeSSH","peerName":"Server"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000015","operation":"deliverNotification","title":"KiwiOS","body":"Done"}"#,
+        ]
+        for json in accepted {
+            let data = Data(json.utf8)
+            try RemoteServer.validateMutationShape(data)
+            _ = try JSONDecoder().decode(RemoteMutation.self, from: data)
+        }
+        let rejected = [
+            #"{"requestID":"00000000-0000-0000-0000-000000000021","operation":"requestProcessTermination"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000022","operation":"probeSSH","peerName":"Server","destination":"untrusted"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000023","operation":"deliverNotification","title":"KiwiOS"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000024","operation":"refreshNativeTools","pluginID":"unexpected"}"#,
+        ]
+        for json in rejected {
+            XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(json.utf8)))
+        }
+        let wrongType = Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000025","operation":"requestProcessTermination","pid":"123"}"#.utf8
+        )
+        try RemoteServer.validateMutationShape(wrongType)
+        XCTAssertThrowsError(try JSONDecoder().decode(RemoteMutation.self, from: wrongType))
+    }
+
+    func testRemoteNativeConfirmationIsIdentityBoundAndExpires() {
+        let owner = RemoteIdentity(login: "owner@example", displayName: "Owner")
+        let other = RemoteIdentity(login: "other@example", displayName: "Other")
+        let now = Date()
+        let process = NativeProcessIdentity(
+            pid: 123, uid: 501, startTimeMicroseconds: 456, executablePath: "/example",
+            displayName: "Example", bundleIdentifier: nil, canTerminate: true
+        )
+        let challenge = RemoteNativeChallenge(
+            identity: owner, operation: .terminateProcess(process), expiresAt: now.addingTimeInterval(60)
+        )
+        XCTAssertTrue(challenge.isValid(for: owner, now: now))
+        XCTAssertFalse(challenge.isValid(for: other, now: now))
+        XCTAssertFalse(challenge.isValid(for: owner, now: now.addingTimeInterval(60)))
+    }
+
+    @MainActor
+    func testRemoteNativeToolsWireShapeIsStable() throws {
+        let snapshot = NativeToolsSnapshot(
+            sampledAt: Date(timeIntervalSince1970: 0),
+            processes: [NativeProcessIdentity(
+                pid: 123, uid: 501, startTimeMicroseconds: 456,
+                executablePath: "/Applications/Example.app/Contents/MacOS/Example",
+                displayName: "Example", bundleIdentifier: "example.app", canTerminate: true
+            )],
+            launchAgents: [NativeLaunchAgent(
+                label: "example.agent", plistPath: "/Users/example/Library/LaunchAgents/example.agent.plist",
+                isLoaded: true, issue: nil
+            )],
+            launchAgentWarning: nil, homebrew: .unavailable,
+            power: NativePowerStatus(
+                lowPowerModeEnabled: false, fileVault: "On", restartSupport: "Unavailable"
+            ),
+            notificationAuthorization: .authorized
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let value = try HubRuntime.remoteNativeTools(snapshot, sshPeerNames: ["Server"], encoder: encoder)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any]
+        )
+        XCTAssertEqual(Set(object.keys), [
+            "sampledAt", "power", "notifications", "processes", "launchAgents",
+            "launchAgentWarning", "sshPeers", "homebrew",
+        ])
+        let homebrew = try XCTUnwrap(object["homebrew"] as? [String: Any])
+        XCTAssertEqual(Set(homebrew.keys), ["status", "packages"])
+        XCTAssertEqual(homebrew["status"] as? String, "unavailable")
+        let peers = try XCTUnwrap(object["sshPeers"] as? [[String: Any]])
+        XCTAssertEqual(peers.first?["name"] as? String, "Server")
+        let process = try XCTUnwrap((object["processes"] as? [[String: Any]])?.first)
+        XCTAssertEqual(process["pid"] as? Int, 123)
+        XCTAssertEqual(process["canTerminate"] as? Bool, true)
+    }
+
     func testHomebrewOwnershipRequiresTheSameReadableReceipt() {
         let managed = ManagedHomebrewFormula(name: "smartmontools", receiptIdentity: "receipt-a")
         XCTAssertTrue(HomebrewCleanupPolicy.owns(managed, currentReceiptIdentity: "receipt-a"))

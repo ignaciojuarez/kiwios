@@ -1,19 +1,19 @@
 # Product definition
 
-KiwiOS is a native control panel for one always-on Mac mini. Its primary user is a technical owner who wants dependable local and tailnet administration without assembling a dashboard, scheduler, and collection of private web apps.
+KiwiOS is a menu-bar control service and tailnet web control panel for one always-on Mac mini. Its primary user is a technical owner who wants dependable administration without assembling a dashboard, scheduler, and collection of private web apps.
 
 ## Promise
 
-From one host-owned UI, the operator can understand the Mac's state, run bounded maintenance work, and add capabilities through reviewable plugins. Failures remain visible and recoverable; KiwiOS never claims pre-login or high-availability behavior it cannot provide.
+From one host-owned web UI, the operator can understand the Mac's state, run bounded maintenance work, and use reviewable plugins. A compact attended Mac surface owns setup that can invoke operating-system trust or permission flows. Failures remain visible and recoverable; KiwiOS never claims pre-login or high-availability behavior it cannot provide.
 
 ## Core journeys
 
-1. Install the signed app, enable launch at login, and use Doctor to finish attended setup.
+1. Install the signed menu-bar app, enable launch at login, and use its compact attended setup window to finish local prerequisites and publish the web UI.
 2. Inspect a plugin's exact source revision, dependencies, and disclosures before enabling it.
 3. See current host/plugin health and the age of each result.
 4. Start a confirmed action, follow bounded progress/logs, cancel it, and review its audit entry.
-5. Perform the same supported work through the tailnet PWA after login.
-6. Diagnose or disable a failing plugin without losing the native control plane.
+5. Use the tailnet PWA as the primary Home, plugin, Events, Tools, Brew, and Settings interface after login.
+6. Diagnose or disable a failing plugin without losing the local menu-bar recovery path.
 
 ## Extension promise
 

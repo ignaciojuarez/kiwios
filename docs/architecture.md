@@ -5,9 +5,9 @@ KiwiOS is an after-login control plane for one Mac. It is a signed macOS app, no
 The implemented surface runs in the owning user's login session and can publish one optional tailnet UI:
 
 ```text
-native macOS UI
+macOS menu bar + attended setup
       |
- KiwiOS.app                    one Aqua user application
+ KiwiOS.app                    one background Aqua user application
       |- discovery + policy    validate, fingerprint, approve, enable
       |- checks + job queue    observe, schedule, lock, supervise, cancel
       |- plugins + tools       host checks and confirmed operations
@@ -17,7 +17,7 @@ native macOS UI
               |
               `- approved trusted plugin commands
 
-tailnet browser
+tailnet browser                primary administration UI
       |
 Tailscale Serve                verified identity, HTTPS origin
       |
@@ -28,7 +28,7 @@ The loopback HTTP server, tailnet PWA, and exact-revision repository installatio
 
 ## Availability boundary
 
-KiwiOS runs in the owning user's Aqua session. The local UI can register or unregister the main app as a login item through `SMAppService`, and Doctor reports whether registration is enabled, blocked on approval, missing, or unknown. KiwiOS is available only after that user logs in. After a cold FileVault restart, somebody must unlock the Mac before KiwiOS, checks, and jobs can run. Remote service preserves this boundary; privileged restart support is not implemented.
+KiwiOS runs in the owning user's Aqua session without a Dock icon. Its menu-bar item opens the tailnet web UI and a compact attended setup window. Attended setup can register or unregister the app as a login item through `SMAppService`, and Doctor reports whether registration is enabled, blocked on approval, missing, or unknown. KiwiOS is available only after that user logs in. After a cold FileVault restart, somebody must unlock the Mac before KiwiOS, checks, and jobs can run. Remote service preserves this boundary; privileged restart support is not implemented.
 
 This boundary is deliberate: GUI applications, TCC grants, Keychain access, and developer tools belong to the Aqua user. KiwiOS does not pretend to be a pre-login or highly available service.
 
@@ -73,7 +73,7 @@ Capabilities version independently. A breaking behavior change increments that c
 
 The current runtime advertises `native.jobs`, `native.watcher`, `native.secrets`, `native.processes`, `native.launchd`, `native.power`, `native.brew`, `native.ssh`, and `native.notify`, alongside the implemented remote capabilities. `native.network`, `native.update`, and `native.mcp` remain future boundaries.
 
-The dedicated Brew view reads the installed formula and cask inventory from `brew info --installed --json=v2`, including versions, formula install reasons, dependency relationships, outdated state, and installed application targets used for local cask icons. Tools shows regular applications, at most 50 owned plists from `~/Library/LaunchAgents`, FileVault and low-power state, named SSH peers, and notification authorization. The bundled optional `monitor` plugin reports CPU, memory, thermal pressure, and SMART drive temperatures; `volume-health` is an additional generic consumer of the plugin UI kinds. Plugins declare required Homebrew core formulae. KiwiOS reports their installed state, can install missing formulae through a separately confirmed local job, and records only those installs for ownership-aware cleanup when a plugin is removed.
+The web Brew view reads the installed formula and cask inventory from `brew info --installed --json=v2`, including versions, formula install reasons, dependency relationships, and outdated state. Web Tools shows regular applications, at most 50 owned plists from `~/Library/LaunchAgents`, FileVault and low-power state, named SSH peers, and notification authorization. Remote policy permits only prompt-free process termination, configured SSH probes, and delivery through an already-authorized notification outbox. LaunchAgent and Homebrew changes, notification authorization, and SSH allowlist edits remain attended. The bundled optional `monitor` plugin reports CPU, memory, thermal pressure, and SMART drive temperatures; `volume-health` is an additional generic consumer of the plugin UI kinds. Plugins declare required Homebrew core formulae. KiwiOS reports their installed state, can install missing formulae through a separately confirmed local job, and records only those installs for ownership-aware cleanup when a plugin is removed.
 
 Native actions use the same durable job queue as plugin actions. A queued operation is revalidated immediately before execution. Process termination is limited to the current user's non-Apple regular applications installed under `/Applications` or `~/Applications`, and PID, start time, executable path, display name, and bundle identity must still match. LaunchAgent and Homebrew mutations require attended setup. SSH jobs store and resolve only a configured peer name, then run with batch mode, strict host-key checking, one connection attempt, and a bounded timeout. Notification authorization is requested only during attended setup; delivery requires an already authorized local outbox. KiwiOS has no privileged restart helper and does not invoke `sudo`.
 
@@ -82,7 +82,7 @@ Native actions use the same durable job queue as plugin actions. A queued operat
 KiwiOS currently reads plugins from three explicit sources:
 
 1. bundled plugins shipped in the app;
-2. an optional development directory selected in Settings;
+2. an optional development directory selected in attended setup;
 3. installed snapshots selected by an approved exact-commit database record.
 
 Invalid candidates are reported individually while healthy plugins remain available. Every duplicate-ID or source-conflict contender is excluded. Duplicate plugin IDs are errors. KiwiOS never scans arbitrary folders and never silently chooses one duplicate over another.
@@ -103,9 +103,9 @@ Before launch KiwiOS verifies the approved source path, manifest, and content di
 
 ## UI and network
 
-KiwiOS owns navigation, layout, confirmation, accessibility, and rendering. Plugins contribute typed descriptors and JSON data; they cannot ship HTML, CSS, JavaScript, or iframes. The remote PWA uses the same information architecture as the macOS window. See [ui.md](ui.md).
+KiwiOS owns navigation, layout, confirmation, accessibility, and rendering. Plugins contribute typed descriptors and JSON data; they cannot ship HTML, CSS, JavaScript, or iframes. The tailnet PWA is the full day-to-day interface; the menu-bar app contains only status, launch, and attended setup/recovery. See [ui.md](ui.md).
 
-The native UI calls the runtime directly. The remote surface uses one fixed loopback HTTP listener behind one KiwiOS-owned, tailnet-only Tailscale Serve origin. It requires Serve-provided human identity plus exact host/origin, session, CSRF, replay, content-type, size, and rate checks for remote mutation; missing identity and tagged-node requests fail closed. Native host actions are not exposed by the current remote mutation contract. Plugins do not bind public listeners or configure Serve. Tailscale Funnel remains unsupported.
+The attended menu-bar UI calls the runtime directly. The web surface uses one fixed loopback HTTP listener behind one KiwiOS-owned, tailnet-only Tailscale Serve origin. It requires Serve-provided human identity plus exact host/origin, session, CSRF, replay, content-type, size, and rate checks for remote mutation; missing identity and tagged-node requests fail closed. The remote contract exposes prompt-free Doctor, layout, plugin, process, configured SSH, and authorized notification operations; prompt-capable native work stays attended. Plugins do not bind public listeners or configure Serve. Tailscale Funnel remains unsupported.
 
 ## Deliberate non-goals
 

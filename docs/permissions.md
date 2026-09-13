@@ -10,7 +10,7 @@ The manifest permission list is disclosure, not containment. KiwiOS shows it bef
 
 Treat enabling a plugin like running a downloaded shell script. Read its source or trust its maintainer and exact commit. The curated catalog improves reviewability but does not certify safety.
 
-Local approvals bind the selected directory, manifest digest, and content digest; installed approvals bind the canonical repository and exact commit as well. All source changes require a new review. The native approval sheet shows source, version, license, dependencies, declared permissions, and digests. Configuration is validated before launch; a plugin remains `needs-setup` until its configuration, requested secrets, and probed prerequisites are ready.
+Local approvals bind the selected directory, manifest digest, and content digest; installed approvals bind the canonical repository and exact commit as well. All source changes require a new review. The attended approval sheet shows source, version, license, dependencies, declared permissions, and digests. Configuration is validated before launch; a plugin remains `needs-setup` until its configuration, requested secrets, and probed prerequisites are ready.
 
 ## 2. KiwiOS policy
 
@@ -18,7 +18,7 @@ KiwiOS requires explicit approval before first enable and before activating an u
 
 Destructive actions declare `confirm = true` and use the host confirmation dialog. The local runtime binds a one-use confirmation to the plugin content, action, and job; it expires after 60 seconds and is checked again at execution. Checks and actions cannot enter the runner merely by calling a view handler. Remote actions and results are audit-logged with the human identity supplied by KiwiOS-owned [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve). API 1 has one role: every verified human identity allowed by the operator's Tailscale policy is an administrator. KiwiOS does not add a second roles database. Requests with missing identity headers fail closed; tagged nodes do not supply a human identity and cannot perform remote mutations in API 1.
 
-KiwiOS's loopback listener is exclusively a Serve backend, not an authenticated local-browser entry point. The native app uses an internal path. KiwiOS accepts identity headers only under this managed deployment model and also enforces origin and CSRF checks. Funnel, alternate reverse proxies, and direct LAN/public binding are unsupported. Same-user local process compromise is outside the v1 boundary, as stated in [SECURITY.md](../SECURITY.md).
+KiwiOS's loopback listener is exclusively a Serve backend, not an authenticated local-browser entry point. The attended menu-bar surface calls the runtime directly. KiwiOS accepts identity headers only under this managed deployment model and also enforces origin and CSRF checks. Funnel, alternate reverse proxies, and direct LAN/public binding are unsupported. Same-user local process compromise is outside the v1 boundary, as stated in [SECURITY.md](../SECURITY.md).
 
 ## 3. macOS grants
 
@@ -48,7 +48,7 @@ The native doctor checks the Aqua session, FileVault state, KiwiOS permissions, 
 
 The current native Doctor probes Aqua ownership, storage/database health, app signing, required host tools, FileVault, launch-at-login registration, Accessibility, and Screen Recording. KiwiOS does not substitute an unsafe operation for a missing preflight API. The app does not yet inspect arbitrary license, device-trust, or blocking application dialogs. Those prerequisites must be completed in an attended session. The remote HTTP surface reports blocked prerequisites and never opens these dialogs. See [remote.md](remote.md) for publication, sessions, and confirmation behavior.
 
-Native SSH inspection and actions use the owning user's OpenSSH configuration. That configuration is part of the attended local trust boundary and may run configured local, proxy, or known-host commands and may enable forwarding. KiwiOS does not expose native SSH operations through the remote mutation API. Operators should review their user SSH configuration before using a named peer; KiwiOS still supplies batch mode, strict host-key checking, one connection attempt, and bounded timeouts.
+SSH inspection uses the owning user's OpenSSH configuration. That configuration is part of the attended local trust boundary and may run configured local, proxy, or known-host commands and may enable forwarding. The PWA may request a bounded probe only by an attended-configured peer name; it cannot supply a destination, port, password, or host key. Operators should review their user SSH configuration before adding a peer. KiwiOS supplies batch mode, strict host-key checking, one connection attempt, and bounded timeouts.
 
 ## Secrets and logs
 

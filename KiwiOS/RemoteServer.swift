@@ -48,7 +48,9 @@ actor RemoteServer {
             ("/app.css", assets.styles, "text/css; charset=utf-8", true),
             ("/app.js", assets.script, "text/javascript; charset=utf-8", true),
             ("/manifest.webmanifest", assets.manifest, "application/manifest+json", true),
-            ("/icon.svg", assets.icon, "image/svg+xml", true),
+            ("/favicon.png", assets.favicon, "image/png", true),
+            ("/icon-192.png", assets.icon192, "image/png", true),
+            ("/icon-512.png", assets.icon512, "image/png", true),
             ("/service-worker.js", assets.serviceWorker, "text/javascript; charset=utf-8", false),
         ]
         for (path, data, contentType, cache) in staticRoutes {
@@ -268,7 +270,7 @@ actor RemoteServer {
         return nil
     }
 
-    private static func validateMutationShape(_ data: Data) throws {
+    static func validateMutationShape(_ data: Data) throws {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rawOperation = object["operation"] as? String,
               let operation = RemoteMutation.Operation(rawValue: rawOperation) else {
@@ -280,8 +282,14 @@ actor RemoteServer {
         case .refreshCheck, .requestAction: fields = ["pluginID", "contributionID"]
         case .confirmAction: fields = ["confirmationToken"]
         case .cancelJob: fields = ["jobID"]
-        case .disablePlugin: fields = ["pluginID"]
+        case .disablePlugin, .enablePlugin: fields = ["pluginID"]
         case .saveConfig: fields = ["pluginID", "values", "configRevision"]
+        case .refreshDoctor, .reloadPlugins, .refreshNativeTools: fields = []
+        case .saveLayout: fields = ["widgets", "hiddenWidgets", "wideWidgets", "sidebar"]
+        case .requestProcessTermination: fields = ["pid"]
+        case .confirmNativeOperation: fields = ["confirmationToken"]
+        case .probeSSH: fields = ["peerName"]
+        case .deliverNotification: fields = ["title", "body"]
         }
         guard Set(object.keys) == common.union(fields),
               fields.allSatisfy({ object[$0] != nil && !(object[$0] is NSNull) }) else {
@@ -400,7 +408,9 @@ private struct RemoteWebAssets: Sendable {
     let styles: Data
     let script: Data
     let manifest: Data
-    let icon: Data
+    let favicon: Data
+    let icon192: Data
+    let icon512: Data
     let serviceWorker: Data
 
     static func load(bundle: Bundle = .main) throws -> Self {
@@ -411,7 +421,8 @@ private struct RemoteWebAssets: Sendable {
             return try Data(contentsOf: url, options: .mappedIfSafe)
         }
         return try Self(index: read("index", "html"), styles: read("app", "css"), script: read("app", "js"),
-                        manifest: read("manifest", "webmanifest"), icon: read("icon", "svg"),
+                        manifest: read("manifest", "webmanifest"), favicon: read("favicon", "png"),
+                        icon192: read("icon-192", "png"), icon512: read("icon-512", "png"),
                         serviceWorker: read("service-worker", "js"))
     }
 }

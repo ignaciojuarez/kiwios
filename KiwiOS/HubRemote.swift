@@ -83,6 +83,7 @@ extension HubRuntime {
             remote.enabled = false
             remote.origin = nil
             remote.challenges.removeAll()
+            remote.nativeChallenges.removeAll()
             await remoteServer.stop()
             do {
                 try await tailscaleService.stop()
@@ -131,6 +132,7 @@ extension HubRuntime {
         remote.origin = nil
         remote.message = "Remote backend stopped; KiwiOS will retry"
         remote.challenges.removeAll()
+        remote.nativeChallenges.removeAll()
         guard !remote.stopping, !remote.starting, !stopped else { return }
         do { try await tailscaleService.stop() }
         catch { operationError = "Serve cleanup needs attention: \(error.localizedDescription)" }
@@ -173,6 +175,7 @@ extension HubRuntime {
         remote.desired = false
         remote.origin = nil
         remote.challenges.removeAll()
+        remote.nativeChallenges.removeAll()
         await remoteServer.stop()
         do {
             try await store?.setLayout(key: "remote-enabled", json: JSONEncoder().encode(false))
@@ -186,13 +189,19 @@ extension HubRuntime {
     }
 
     func remoteSnapshot(for identity: RemoteIdentity, deadline: RemoteRequestDeadline) async throws -> Data {
-        guard remote.enabled, mode == .remote, !stopped else { throw PolicyError.blocked("Remote access is unavailable") }
+        guard remote.enabled, mode == .remote, !stopped, !reloadInProgress else {
+            throw PolicyError.blocked("Remote access is unavailable")
+        }
         try deadline.check()
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         var pluginValues: [JSONValue] = []
         for plugin in plugins {
             try deadline.check()
+            let missingBrew = plugin.manifest.brew.filter { !BrewFormulaStatus.isInstalled($0) }
+            let canEnableRemotely = await remoteEnableAvailable(pluginID: plugin.id)
+            let enableBlocker = canEnableRemotely ? await remoteEnableBlocker(pluginID: plugin.id)
+                : plugin.message == "Disabled" ? "Review this source in Attended Setup before enabling it from the web." : plugin.message
             var value: [String: JSONValue] = [
                 "id": .string(plugin.id), "name": .string(plugin.manifest.name),
                 "version": .string(plugin.manifest.version), "lifecycle": .string(plugin.lifecycle.rawValue),
@@ -215,6 +224,9 @@ extension HubRuntime {
                     "id": .string($0.id), "title": .string($0.title), "kind": .string($0.kind.rawValue), "source": .string($0.source), "size": .string($0.size)]) }),
                 "sidebar": .array(plugin.manifest.ui.sidebar.map { .object([
                     "id": .string($0.id), "label": .string($0.label), "page": .string($0.page)]) }),
+                "missingBrew": .array(missingBrew.map(JSONValue.string)),
+                "canEnableRemotely": .bool(canEnableRemotely),
+                "enableBlocker": enableBlocker.map(JSONValue.string) ?? .null,
             ]
             if let schema = loaded[plugin.id]?.configSchema {
                 var properties: [String: JSONValue] = [:]
@@ -250,12 +262,39 @@ extension HubRuntime {
             ]
             return .object(value)
         }
+        let nativeTools = try native.toolsSnapshot.map {
+            try Self.remoteNativeTools($0, sshPeerNames: native.peers.map(\.name), encoder: encoder)
+        } ?? .null
         let snapshot: [String: JSONValue] = [
             "api": .string("kiwios.remote/1"), "mode": .string(mode.rawValue),
             "viewer": .object(["loginName": .string(identity.login), "displayName": .string(identity.displayName)]),
             "availability": .string("Available only after the owning Mac user logs in and unlocks FileVault"),
             "plugins": .array(pluginValues), "jobs": .array(jobValues),
+            "nativeTools": nativeTools, "nativeToolsRefreshing": .bool(native.toolsRefreshing),
             "layout": try Self.wire(layout, encoder: encoder),
+            "settings": .object([
+                "operationMode": .object([
+                    "value": .string(mode.rawValue),
+                    "guidance": .string("Attended setup mode can only be selected on the Mac because it permits system prompts."),
+                ]),
+                "launchAtLogin": .object([
+                    "status": .string(doctorFindings.first(where: { $0.id == "launch-at-login" })?.status.rawValue ?? "unknown"),
+                    "detail": .string(doctorFindings.first(where: { $0.id == "launch-at-login" })?.detail ?? "Refresh Doctor to inspect launch-at-login status."),
+                    "guidance": .string("Change launch-at-login on the Mac; macOS may require approval in System Settings."),
+                ]),
+                "remoteAccess": .object([
+                    "enabled": .bool(remote.enabled), "desired": .bool(remote.desired),
+                    "message": .string(remote.message),
+                    "guidance": .string("Enable, disable, and recover Tailscale Serve from the Mac so the local recovery path remains available."),
+                ]),
+                "developmentPlugins": .object([
+                    "configured": .bool(developmentDirectory != nil),
+                    "guidance": .string("Choose or remove the development plugin directory in attended setup on the Mac."),
+                ]),
+                "namedSecrets": .object([
+                    "guidance": .string("Save or replace Keychain secrets in attended setup on the Mac. KiwiOS never exposes their values remotely."),
+                ]),
+            ]),
             "doctor": .array(doctorFindings.map { .object(["id": .string($0.id), "title": .string($0.title),
                 "status": .string($0.status.rawValue), "detail": .string($0.detail)]) }),
         ]
@@ -267,7 +306,7 @@ extension HubRuntime {
 
     func remoteMutate(_ mutation: RemoteMutation, identity: RemoteIdentity,
                       deadline: RemoteRequestDeadline) async throws -> Data {
-        guard remote.enabled, mode == .remote, !stopped, !reloading, let queue else {
+        guard remote.enabled, mode == .remote, !stopped, !reloadInProgress, !reloading, let queue else {
             throw PolicyError.blocked("Remote mutations require the active remote runtime")
         }
         try requireAdmissionsOpen()
@@ -276,6 +315,7 @@ extension HubRuntime {
         try deadline.check()
         let actor = identity.auditActor
         remote.challenges = remote.challenges.filter { $0.value.confirmation.expiresAt > Date() }
+        remote.nativeChallenges = remote.nativeChallenges.filter { $0.value.expiresAt > Date() }
         switch mutation.operation {
         case .refreshCheck:
             guard let id = mutation.pluginID, let check = mutation.contributionID,
@@ -326,6 +366,10 @@ extension HubRuntime {
             guard let id = mutation.pluginID else { throw PolicyError.blocked("Missing plugin ID") }
             try deadline.check()
             try await disableApprovedPlugin(pluginID: id, requestedBy: actor)
+        case .enablePlugin:
+            guard let id = mutation.pluginID else { throw PolicyError.blocked("Missing plugin ID") }
+            try deadline.check()
+            try await enableApprovedPlugin(pluginID: id, requestedBy: actor)
         case .saveConfig:
             guard let id = mutation.pluginID, let values = mutation.values, let revision = mutation.configRevision,
                   let plugin = loaded[id], let configuration else { throw PolicyError.blocked("Unknown plugin configuration") }
@@ -334,9 +378,84 @@ extension HubRuntime {
             _ = try await configuration.save(values, expectedRevision: revision, for: plugin, mode: .remote)
             try await audit("plugin.config-saved", pluginID: id, requestedBy: actor)
             await refreshDoctor()
+        case .refreshDoctor:
+            try deadline.check()
+            await refreshDoctor()
+        case .saveLayout:
+            guard let widgets = mutation.widgets, let hiddenWidgets = mutation.hiddenWidgets,
+                  let wideWidgets = mutation.wideWidgets, let sidebar = mutation.sidebar else {
+                throw PolicyError.blocked("Missing layout values")
+            }
+            try deadline.check()
+            let changed = try remoteLayout(widgets: widgets, hiddenWidgets: hiddenWidgets,
+                wideWidgets: wideWidgets, sidebar: sidebar)
+            try await store?.setLayout(key: "home", json: JSONEncoder().encode(changed))
+            layout = changed
+            try await audit("layout.saved", pluginID: nil, requestedBy: actor)
+        case .reloadPlugins:
+            try deadline.check()
+            await reload()
+        case .refreshNativeTools:
+            try deadline.check()
+            native.generation += 1
+            native.toolsSnapshot = nil
+            startNativeToolsRefresh()
+        case .requestProcessTermination:
+            guard let pid = mutation.pid else { throw PolicyError.blocked("Missing process ID") }
+            let operation = NativeOperation.terminateProcess(try await nativeCapabilities.terminableProcess(pid: pid))
+            try await validateNativeOperation(operation, requestedBy: actor)
+            try deadline.check()
+            guard remote.nativeChallenges.count < 64 else {
+                throw PolicyError.blocked("Too many pending confirmations")
+            }
+            let token = try RemoteSecurity.randomToken()
+            remote.nativeChallenges[token] = RemoteNativeChallenge(
+                identity: identity, operation: operation, expiresAt: Date().addingTimeInterval(60)
+            )
+            try await audit("native.confirmation-issued", pluginID: nil, requestedBy: actor)
+            return try JSONEncoder().encode(JSONValue.object([
+                "confirmationToken": .string(token),
+                "label": .string(operation.confirmationTitle ?? "Quit process?"),
+                "expiresIn": .number(60),
+                "confirmationOperation": .string(RemoteMutation.Operation.confirmNativeOperation.rawValue),
+            ]))
+        case .confirmNativeOperation:
+            guard let token = mutation.confirmationToken,
+                  let challenge = remote.nativeChallenges[token], challenge.isValid(for: identity) else {
+                throw PolicyError.blocked("Confirmation expired, consumed, or belongs to another identity")
+            }
+            remote.nativeChallenges.removeValue(forKey: token)
+            try deadline.check()
+            try await enqueueNativeOperation(challenge.operation, requestedBy: actor)
+        case .probeSSH:
+            guard let peerName = mutation.peerName else { throw PolicyError.blocked("Missing SSH peer name") }
+            try deadline.check()
+            try await enqueueNativeOperation(.probeSSH(peerName: peerName), requestedBy: actor)
+        case .deliverNotification:
+            guard let title = mutation.title, let body = mutation.body else {
+                throw PolicyError.blocked("Missing notification content")
+            }
+            try deadline.check()
+            try await enqueueNativeOperation(.deliverNotification(title: title, body: body), requestedBy: actor)
         }
         await refreshResults()
         return try JSONEncoder().encode(JSONValue.object(["ok": .bool(true)]))
+    }
+
+    private func remoteLayout(
+        widgets: [String], hiddenWidgets: [String], wideWidgets: [String], sidebar: [String]
+    ) throws -> HomeLayout {
+        let widgetKeys = Set(plugins.flatMap { plugin in
+            plugin.manifest.ui.widgets.map { "\(plugin.id)/\($0.id)" }
+        })
+        let sidebarKeys = Set(plugins.flatMap { plugin in
+            plugin.manifest.ui.sidebar.map { "\(plugin.id)/\($0.id)" }
+        })
+        try RemoteLayoutPolicy.validate(widgets: widgets, hiddenWidgets: hiddenWidgets,
+            wideWidgets: wideWidgets, sidebar: sidebar,
+            validWidgetKeys: widgetKeys, validSidebarKeys: sidebarKeys)
+        return HomeLayout(widgets: widgets, hiddenWidgets: Set(hiddenWidgets),
+            wideWidgets: Set(wideWidgets), sidebar: sidebar, initialized: layout.initialized)
     }
     func remoteAdmission(_ request: JobRequest, deadline: RemoteRequestDeadline) async throws -> Data {
         guard let queue else { throw PolicyError.blocked("Queue is unavailable") }
@@ -354,5 +473,70 @@ extension HubRuntime {
     }
     static func wire<T: Encodable>(_ value: T, encoder: JSONEncoder) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: encoder.encode(value))
+    }
+
+    static func remoteNativeTools(
+        _ snapshot: NativeToolsSnapshot, sshPeerNames: [String], encoder: JSONEncoder
+    ) throws -> JSONValue {
+        let homebrew: JSONValue
+        switch snapshot.homebrew {
+        case .unavailable:
+            homebrew = .object(["status": .string("unavailable"), "packages": .array([])])
+        case .error(let path, let message):
+            homebrew = .object([
+                "status": .string("error"), "path": .string(path),
+                "message": .string(message), "packages": .array([]),
+            ])
+        case .available(let path, let packages):
+            homebrew = .object([
+                "status": .string("available"), "path": .string(path),
+                "packages": .array(packages.map(remoteHomebrewPackage)),
+            ])
+        }
+        return .object([
+            "sampledAt": try wire(snapshot.sampledAt, encoder: encoder),
+            "power": .object([
+                "lowPowerModeEnabled": .bool(snapshot.power.lowPowerModeEnabled),
+                "fileVault": .string(snapshot.power.fileVault),
+                "restartSupport": .string(snapshot.power.restartSupport),
+            ]),
+            "notifications": .object([
+                "authorization": .string(snapshot.notificationAuthorization.rawValue),
+            ]),
+            "processes": .array(snapshot.processes.map { process in .object([
+                "pid": .number(Double(process.pid)), "uid": .number(Double(process.uid)),
+                "startTimeMicroseconds": .number(Double(process.startTimeMicroseconds)),
+                "executablePath": .string(process.executablePath),
+                "displayName": .string(process.displayName),
+                "bundleIdentifier": process.bundleIdentifier.map(JSONValue.string) ?? .null,
+                "canTerminate": .bool(process.canTerminate),
+            ]) }),
+            "launchAgents": .array(snapshot.launchAgents.map { agent in .object([
+                "label": .string(agent.label), "plistPath": .string(agent.plistPath),
+                "isLoaded": agent.isLoaded.map(JSONValue.bool) ?? .null,
+                "issue": agent.issue.map(JSONValue.string) ?? .null,
+            ]) }),
+            "launchAgentWarning": snapshot.launchAgentWarning.map(JSONValue.string) ?? .null,
+            "sshPeers": .array(sshPeerNames.sorted().map { .object(["name": .string($0)]) }),
+            "homebrew": homebrew,
+        ])
+    }
+
+    private static func remoteHomebrewPackage(_ package: NativeHomebrewPackage) -> JSONValue {
+        .object([
+            "kind": .string(package.kind.rawValue), "name": .string(package.name),
+            "displayName": .string(package.displayName), "qualifiedName": .string(package.qualifiedName),
+            "description": package.description.map(JSONValue.string) ?? .null,
+            "tap": package.tap.map(JSONValue.string) ?? .null,
+            "installedVersions": .array(package.installedVersions.map(JSONValue.string)),
+            "latestVersion": package.latestVersion.map(JSONValue.string) ?? .null,
+            "dependencies": .array(package.dependencies.map { dependency in .object([
+                "kind": .string(dependency.kind.rawValue), "name": .string(dependency.name),
+            ]) }),
+            "applicationPath": package.applicationPath.map(JSONValue.string) ?? .null,
+            "installedOnRequest": .bool(package.installedOnRequest),
+            "outdated": .bool(package.outdated), "pinned": .bool(package.pinned),
+            "kegOnly": .bool(package.kegOnly),
+        ])
     }
 }

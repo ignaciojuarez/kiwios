@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		02AF4B1B278F4C94875598F9 /* RemoteSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DA0D76F0E982E9BF06F4F6 /* RemoteSecurity.swift */; };
 		02CA12748FB8F4A4C2C06074 /* PluginMarketplaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E6CE20556E7DC65AB45AC7 /* PluginMarketplaceView.swift */; };
-		0A9B64DB150D26E888A5ADDA /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC3B51E31C10E3C2FA47A2B /* HomeView.swift */; };
 		0E8424D8B1E553034B777184 /* NativeCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E93AB49A07A70716CB7132 /* NativeCapabilities.swift */; };
 		0FE1116E1212D6A73DE534C7 /* KiwiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3056A09229B102CF74591D /* KiwiOSApp.swift */; };
 		10002320F984A8A66E47071E /* HubRemote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594C1771CBF0E7B4580C1522 /* HubRemote.swift */; };
@@ -20,18 +19,14 @@
 		256C07C2234E8748C3CB58DF /* HubPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB72927288A3AEF26A09017 /* HubPresentation.swift */; };
 		2804714BBB3FDB54F774FD12 /* RemoteAccessPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C3231A4FE65010F4A5F618 /* RemoteAccessPanel.swift */; };
 		35CF8D49B39DFA05E0EC5EF7 /* PluginContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 027742968FDE49F4D3116E31 /* PluginContracts.swift */; };
-		35FACA7FDF0A59A0E4F5BA3E /* PluginUIData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE19BC6B086100DA40DD47FB /* PluginUIData.swift */; };
 		3968916EFEA60116ED8CA63E /* plugins in Resources */ = {isa = PBXBuildFile; fileRef = 9770E5B2876C93010320E948 /* plugins */; };
 		4268653B4FAF4705D595B7D4 /* PluginCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB1B98A7F75B672786150E8 /* PluginCatalog.swift */; };
 		4D42F80F564C3E1A85A303C1 /* Hummingbird in Frameworks */ = {isa = PBXBuildFile; productRef = F8A4BB9B6DF7D64EDAB87A38 /* Hummingbird */; };
-		4E8E0AFC4E354251BF75D2F3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF80F4E018ED98CACDC57666 /* RootView.swift */; };
 		628009FEE273526A34ECDCCE /* Runtime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7256EE2DB7EACFE92CDD81 /* Runtime.swift */; };
 		65071EC248D395B662385171 /* WatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A608E88E8CE98FD4E9459CFA /* WatcherTests.swift */; };
 		69A09016CAD16E2910561818 /* PluginInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39E16C4C7E74259DC4AF04A /* PluginInstaller.swift */; };
 		6AEE24CB2FA32EAC8ACD364E /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = 9308985B7C41FDD90F9B4FA5 /* Subprocess */; };
 		72A292086BC3CCA8D4DA3887 /* HubRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59782C166183299A221E0A8B /* HubRuntime.swift */; };
-		731EF4BEB78C0F969627E719 /* BrewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73F79DD560AF8403B2AE709D /* BrewView.swift */; };
-		74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F65F461C851BA86A09522DC /* Assets.xcassets */; };
 		797EC3EAC0744FB0BB5E2388 /* RuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79F328211F039186E5D2162 /* RuntimeTests.swift */; };
 		8A1BBB812637590442D1FD97 /* JobQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B07E50E74B46D1B0C24FB5 /* JobQueue.swift */; };
 		91DD08A8D4837ED308035DC7 /* PluginContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE2D12A3FFAD9A72ABE36A2 /* PluginContentView.swift */; };
@@ -44,7 +39,6 @@
 		B23D6EEEBB614059D9FD2435 /* ManifestContractCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3B72EAD276CA457A847DE7 /* ManifestContractCompletionTests.swift */; };
 		C889E1BBF2B8CE4EC00232BE /* HubIntegrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85450F213B7D38822F2A8021 /* HubIntegrations.swift */; };
 		CA299375462EE2B958989545 /* HostDoctor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95ADCBF900B92EE881FBF427 /* HostDoctor.swift */; };
-		CB58DD1BBFA4206B01D0D61C /* NativeToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542D9745D13DF474FEFD36C4 /* NativeToolsView.swift */; };
 		CB8B73C148B0E1DBB8782BC7 /* ManifestValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04A1FF3D99D5AE196C6E03D /* ManifestValidationTests.swift */; };
 		D56C30418B862E4BABB1D30D /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 61F441D2631DA2845758BAD0 /* Web */; };
 		DE7ECAC3E424BFE00C8A9D50 /* RemoteServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95926081BA99F4CEE1C036A0 /* RemoteServer.swift */; };
@@ -52,7 +46,6 @@
 		E5634E743756B0C8368E84AC /* PluginManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFB43AED45605BE0AEA4B416 /* PluginManagementView.swift */; };
 		EB10A507E979B2DB6D1B1852 /* Watcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C728B89FB7420C5353A4C8AE /* Watcher.swift */; };
 		EE76F856DCD99C52308EB2C7 /* PluginConfigSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66F07AA66ACE80EE64BE9B2F /* PluginConfigSchema.swift */; };
-		F007803BC7021615BDCDFCAF /* EventsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EE4D5C7794F51CBF541642 /* EventsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,13 +67,11 @@
 		1EE2D12A3FFAD9A72ABE36A2 /* PluginContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginContentView.swift; sourceTree = "<group>"; };
 		25F71E7F8F672A33E59EEE7F /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		2E7256EE2DB7EACFE92CDD81 /* Runtime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runtime.swift; sourceTree = "<group>"; };
-		2F65F461C851BA86A09522DC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2FB72927288A3AEF26A09017 /* HubPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubPresentation.swift; sourceTree = "<group>"; };
 		37F47A0E9551777CA7459FAE /* PluginDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginDiscovery.swift; sourceTree = "<group>"; };
 		43FCFAF3207E0FE11C203983 /* app-icon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = "app-icon.icon"; sourceTree = "<group>"; };
 		4CB1B98A7F75B672786150E8 /* PluginCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginCatalog.swift; sourceTree = "<group>"; };
 		4F3B72EAD276CA457A847DE7 /* ManifestContractCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManifestContractCompletionTests.swift; sourceTree = "<group>"; };
-		542D9745D13DF474FEFD36C4 /* NativeToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeToolsView.swift; sourceTree = "<group>"; };
 		57DA0D76F0E982E9BF06F4F6 /* RemoteSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSecurity.swift; sourceTree = "<group>"; };
 		594C1771CBF0E7B4580C1522 /* HubRemote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubRemote.swift; sourceTree = "<group>"; };
 		59782C166183299A221E0A8B /* HubRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubRuntime.swift; sourceTree = "<group>"; };
@@ -88,8 +79,6 @@
 		61F441D2631DA2845758BAD0 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Web; path = KiwiOS/Web; sourceTree = SOURCE_ROOT; };
 		66F07AA66ACE80EE64BE9B2F /* PluginConfigSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginConfigSchema.swift; sourceTree = "<group>"; };
 		6B3056A09229B102CF74591D /* KiwiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiwiOSApp.swift; sourceTree = "<group>"; };
-		73F79DD560AF8403B2AE709D /* BrewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrewView.swift; sourceTree = "<group>"; };
-		76EE4D5C7794F51CBF541642 /* EventsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsView.swift; sourceTree = "<group>"; };
 		82B07E50E74B46D1B0C24FB5 /* JobQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobQueue.swift; sourceTree = "<group>"; };
 		85450F213B7D38822F2A8021 /* HubIntegrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubIntegrations.swift; sourceTree = "<group>"; };
 		89E6CE20556E7DC65AB45AC7 /* PluginMarketplaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginMarketplaceView.swift; sourceTree = "<group>"; };
@@ -97,13 +86,10 @@
 		95926081BA99F4CEE1C036A0 /* RemoteServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteServer.swift; sourceTree = "<group>"; };
 		95ADCBF900B92EE881FBF427 /* HostDoctor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDoctor.swift; sourceTree = "<group>"; };
 		9770E5B2876C93010320E948 /* plugins */ = {isa = PBXFileReference; lastKnownFileType = folder; path = plugins; sourceTree = SOURCE_ROOT; };
-		9DC3B51E31C10E3C2FA47A2B /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A608E88E8CE98FD4E9459CFA /* WatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatcherTests.swift; sourceTree = "<group>"; };
 		A79F328211F039186E5D2162 /* RuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeTests.swift; sourceTree = "<group>"; };
 		B1C3231A4FE65010F4A5F618 /* RemoteAccessPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAccessPanel.swift; sourceTree = "<group>"; };
 		C728B89FB7420C5353A4C8AE /* Watcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watcher.swift; sourceTree = "<group>"; };
-		DE19BC6B086100DA40DD47FB /* PluginUIData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginUIData.swift; sourceTree = "<group>"; };
-		DF80F4E018ED98CACDC57666 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		E39E16C4C7E74259DC4AF04A /* PluginInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginInstaller.swift; sourceTree = "<group>"; };
 		E427BC5710BD9D2BD75A7C77 /* PluginPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginPolicy.swift; sourceTree = "<group>"; };
 		E6ADF401BBDC57A95EC16E04 /* KiwiOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiwiOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -162,10 +148,6 @@
 		FC1CD91ED112AFB4815DF47D /* KiwiOS */ = {
 			isa = PBXGroup;
 			children = (
-				2F65F461C851BA86A09522DC /* Assets.xcassets */,
-				73F79DD560AF8403B2AE709D /* BrewView.swift */,
-				76EE4D5C7794F51CBF541642 /* EventsView.swift */,
-				9DC3B51E31C10E3C2FA47A2B /* HomeView.swift */,
 				95ADCBF900B92EE881FBF427 /* HostDoctor.swift */,
 				85450F213B7D38822F2A8021 /* HubIntegrations.swift */,
 				2FB72927288A3AEF26A09017 /* HubPresentation.swift */,
@@ -175,7 +157,6 @@
 				82B07E50E74B46D1B0C24FB5 /* JobQueue.swift */,
 				6B3056A09229B102CF74591D /* KiwiOSApp.swift */,
 				17E93AB49A07A70716CB7132 /* NativeCapabilities.swift */,
-				542D9745D13DF474FEFD36C4 /* NativeToolsView.swift */,
 				25F71E7F8F672A33E59EEE7F /* Persistence.swift */,
 				4CB1B98A7F75B672786150E8 /* PluginCatalog.swift */,
 				66F07AA66ACE80EE64BE9B2F /* PluginConfigSchema.swift */,
@@ -188,11 +169,9 @@
 				04963A16F368B506B6DC1DD9 /* PluginManifest.swift */,
 				89E6CE20556E7DC65AB45AC7 /* PluginMarketplaceView.swift */,
 				E427BC5710BD9D2BD75A7C77 /* PluginPolicy.swift */,
-				DE19BC6B086100DA40DD47FB /* PluginUIData.swift */,
 				B1C3231A4FE65010F4A5F618 /* RemoteAccessPanel.swift */,
 				57DA0D76F0E982E9BF06F4F6 /* RemoteSecurity.swift */,
 				95926081BA99F4CEE1C036A0 /* RemoteServer.swift */,
-				DF80F4E018ED98CACDC57666 /* RootView.swift */,
 				2E7256EE2DB7EACFE92CDD81 /* Runtime.swift */,
 				0BA53479E7A50E785653D880 /* TailscaleService.swift */,
 				C728B89FB7420C5353A4C8AE /* Watcher.swift */,
@@ -290,7 +269,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */,
 				D56C30418B862E4BABB1D30D /* Web in Resources */,
 				A84134F204EE2FCABA317739 /* app-icon.icon in Resources */,
 				18A22C518AAC88BF15680B7D /* catalog in Resources */,
@@ -305,9 +283,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				731EF4BEB78C0F969627E719 /* BrewView.swift in Sources */,
-				F007803BC7021615BDCDFCAF /* EventsView.swift in Sources */,
-				0A9B64DB150D26E888A5ADDA /* HomeView.swift in Sources */,
 				CA299375462EE2B958989545 /* HostDoctor.swift in Sources */,
 				C889E1BBF2B8CE4EC00232BE /* HubIntegrations.swift in Sources */,
 				256C07C2234E8748C3CB58DF /* HubPresentation.swift in Sources */,
@@ -317,7 +292,6 @@
 				8A1BBB812637590442D1FD97 /* JobQueue.swift in Sources */,
 				0FE1116E1212D6A73DE534C7 /* KiwiOSApp.swift in Sources */,
 				0E8424D8B1E553034B777184 /* NativeCapabilities.swift in Sources */,
-				CB58DD1BBFA4206B01D0D61C /* NativeToolsView.swift in Sources */,
 				AC267A0C1D5979D13AEE8344 /* Persistence.swift in Sources */,
 				4268653B4FAF4705D595B7D4 /* PluginCatalog.swift in Sources */,
 				EE76F856DCD99C52308EB2C7 /* PluginConfigSchema.swift in Sources */,
@@ -330,11 +304,9 @@
 				A6610303B05CA61616A05352 /* PluginManifest.swift in Sources */,
 				02CA12748FB8F4A4C2C06074 /* PluginMarketplaceView.swift in Sources */,
 				183896FA7C4DBFE188A20E52 /* PluginPolicy.swift in Sources */,
-				35FACA7FDF0A59A0E4F5BA3E /* PluginUIData.swift in Sources */,
 				2804714BBB3FDB54F774FD12 /* RemoteAccessPanel.swift in Sources */,
 				02AF4B1B278F4C94875598F9 /* RemoteSecurity.swift in Sources */,
 				DE7ECAC3E424BFE00C8A9D50 /* RemoteServer.swift in Sources */,
-				4E8E0AFC4E354251BF75D2F3 /* RootView.swift in Sources */,
 				628009FEE273526A34ECDCCE /* Runtime.swift in Sources */,
 				E07A5FB411986C8431A340A2 /* TailscaleService.swift in Sources */,
 				EB10A507E979B2DB6D1B1852 /* Watcher.swift in Sources */,
@@ -390,6 +362,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KiwiOS;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "KiwiOS reads drive health and capacity for plugins you add.";
@@ -554,6 +527,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KiwiOS;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "KiwiOS reads drive health and capacity for plugins you add.";

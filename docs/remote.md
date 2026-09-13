@@ -1,6 +1,6 @@
 # Remote HTTP and PWA
 
-KiwiOS exposes one optional remote UI after the owning Aqua user logs in. Hummingbird 2.26.0 serves a fixed `127.0.0.1:31928` backend, and a KiwiOS-owned Tailscale Serve HTTPS mapping is the only supported publisher. Direct localhost browsing, LAN binding, alternate proxies, Tailscale Services, and Funnel are unsupported.
+KiwiOS exposes its primary UI after the owning Aqua user logs in. Hummingbird 2.26.0 serves a fixed `127.0.0.1:31928` backend, and a KiwiOS-owned Tailscale Serve HTTPS mapping is the only supported publisher. Direct localhost browsing, LAN binding, alternate proxies, Tailscale Services, and Funnel are unsupported.
 
 ## Publication lifecycle
 
@@ -54,22 +54,33 @@ The snapshot root is `kiwios.remote/1`:
   "viewer": {"loginName": "person@example.com", "displayName": "Person"},
   "plugins": [],
   "jobs": [],
+  "nativeTools": null,
+  "nativeToolsRefreshing": false,
   "layout": {"widgets": [], "hiddenWidgets": [], "wideWidgets": [], "sidebar": []},
+  "settings": {
+    "operationMode": {"value": "remote", "guidance": "..."},
+    "launchAtLogin": {"status": "passed", "detail": "...", "guidance": "..."},
+    "remoteAccess": {"enabled": true, "desired": true, "message": "...", "guidance": "..."},
+    "developmentPlugins": {"configured": false, "guidance": "..."},
+    "namedSecrets": {"guidance": "..."}
+  },
   "doctor": []
 }
 ```
 
 Each plugin includes identity and lifecycle fields; check and action metadata; page, widget, and sidebar descriptors; latest and live results keyed by source; host-scoped action resource keys; public configuration values; and the host-supported configuration schema. Descriptor kinds remain exactly `stat`, `checks`, `actions`, `table`, `log`, `form`, and `watchers`. All plugin strings are inserted as text. Plugins cannot contribute markup, script, CSS, routes, links, or accessibility semantics.
 
-The snapshot includes only current nonterminal action state so plugin controls remain consistent; completed outcomes live in each plugin's bounded latest results. The overall response is bounded to 8 MiB.
+The snapshot includes only current nonterminal action state so plugin and native controls remain consistent; completed plugin outcomes live in each plugin's bounded latest results. During an explicit prompt-free refresh, `nativeToolsRefreshing` keeps the Tools page in an inline collecting state without a warning banner. When collection finishes, `nativeTools` contains sampled power, application, user LaunchAgent, named SSH peer, notification-authorization, and installed Homebrew state. SSH destinations and secret values are never serialized. The overall response is bounded to 8 MiB.
 
-A mutation contains `requestID`, `operation`, and exactly the required fields for that operation. Supported operations are `refreshCheck`, `requestAction`, `confirmAction`, `cancelJob`, `disablePlugin`, and `saveConfig`. Unknown, unrelated, missing, and null required top-level fields are rejected. `saveConfig` carries only fields changed from the loaded form plus its `configRevision`; KiwiOS applies the patch only when that revision still matches and returns HTTP 409 on conflict.
+A mutation contains `requestID`, `operation`, and exactly the required fields for that operation. Plugin operations are `refreshCheck`, `requestAction`, `confirmAction`, `cancelJob`, `disablePlugin`, `enablePlugin`, `saveConfig`, and `reloadPlugins`. `enablePlugin` can restore only an unchanged source with a matching local approval; first-time and changed-code review stay in Attended Setup. It never installs dependencies remotely: missing declared Homebrew formulae are listed in the PWA and must use the existing attended confirmation on the Mac. Settings operations are `refreshDoctor` and `saveLayout`. Native operations are `refreshNativeTools`, `requestProcessTermination`, `confirmNativeOperation`, `probeSSH`, and `deliverNotification`. Unknown, unrelated, missing, and null required top-level fields are rejected. `saveConfig` carries only fields changed from the loaded form plus its `configRevision`; KiwiOS applies the patch only when that revision still matches and returns HTTP 409 on conflict. `saveLayout` accepts only known, unique widget and sidebar contribution keys.
 
 Actions declared with `confirm = true` use a two-step runtime exchange. `requestAction` returns a random, identity-bound, one-use challenge with its host-owned label and a 60-second expiry. The PWA renders a KiwiOS confirmation dialog and returns that token through `confirmAction`. Browser state cannot mint a grant, and neither request waits for job completion. Every admitted job, cancel, configuration change, disable, and confirmation event records the verified `tailscale:<login>` actor. If a response is lost after admission, the durable request UUID prevents replay; the owning plugin view shows the accepted action's state.
 
+Process termination uses the same two-step principle. The browser supplies only a PID; KiwiOS resolves the current terminable Aqua application, binds its complete identity to a separate one-use challenge, and revalidates it at confirmation, queue admission, and execution. SSH probes accept only a configured peer name. Notification delivery requires authorization already granted during attended setup. The remote contract has no LaunchAgent mutation, Homebrew mutation, SSH-peer edit, notification-authorization, Keychain-secret, development-directory, login-item, operation-mode, plugin-install, or Serve-publication operation.
+
 ## Offline behavior
 
-The service worker caches only the application shell: `/`, CSS, JavaScript, the web manifest, and the host-owned SVG app icon. It never intercepts or caches `/api/` requests. When the Mac, app, Tailscale, or Serve is unavailable, the shell states that live status and actions are unavailable and polls for reauthentication. Previously displayed results are labeled as potentially old, controls are disabled until reconnection, and no mutation is queued for replay. Phone navigation includes active plugin pages, Events, and Status & setup. Events shows one latest line per plugin. Interrupted work directs the user to inspect effects before requesting a fresh action. Secret fields remain attended-setup guidance, and polling does not replace focused or unsaved configuration drafts. Drafts remain editable offline; Save and other mutations require a live connection. Blank numeric fields and the enum keep-current choice preserve existing values.
+The service worker caches only the application shell: `/`, CSS, JavaScript, the web manifest, and the host-owned PNG favicon/app icons. It never intercepts or caches `/api/` requests. When the Mac, app, Tailscale, or Serve is unavailable, the shell states that live status and actions are unavailable and polls for reauthentication. Previously displayed results are labeled as potentially old, controls are disabled until reconnection, and no mutation is queued for replay. Phone navigation includes Home, Tools, Brew, Plugins, Events, Settings, and active plugin pages. Events shows one latest line per plugin. Interrupted work directs the user to inspect effects before requesting a fresh action. Secret fields remain attended-setup guidance, and polling does not replace focused or unsaved configuration drafts. Drafts remain editable offline; Save and other mutations require a live connection. Blank numeric fields and the enum keep-current choice preserve existing values. Identical polling snapshots do not rebuild the page, and plugin reloads retain the last complete display until the new runtime is ready.
 
 Session creation has its own five-per-minute limit per verified login. Each login retains at most four device sessions; a new session without a replaceable cookie evicts that login's oldest session once the allowance is full. Clearing cookies cannot consume all 64 global slots. Replacing a valid session preserves its mutation-rate window. Global capacity exhaustion remains a distinct 503 response.
 
