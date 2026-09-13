@@ -3,6 +3,48 @@ import XCTest
 @testable import KiwiOS
 
 final class RuntimeTests: XCTestCase {
+    func testHomebrewInstalledInventoryDecodesFormulaeCasksAndDependencies() throws {
+        let status = try NativeHomebrewStatus.decode(path: "/opt/homebrew/bin/brew", data: Data(#"""
+        {
+          "formulae": [{
+            "name": "imagemagick", "full_name": "imagemagick", "desc": "Image tools",
+            "tap": "homebrew/core", "versions": {"stable": "7.1.2"}, "revision": 1,
+            "installed": [{"version": "7.1.1", "installed_on_request": true}],
+            "dependencies": ["libpng"], "outdated": true, "pinned": false, "keg_only": false,
+            "future_field": "ignored"
+          }],
+          "casks": [{
+            "token": "firefox", "full_token": "firefox", "name": ["Mozilla Firefox"],
+            "desc": "Web browser", "tap": "homebrew/cask", "version": "130.0",
+            "installed": "129.0", "depends_on": {"formula": ["libpng"], "cask": "xquartz"},
+            "artifacts": [{"app": ["Firefox.app"], "target": "/Applications/Firefox.app"}],
+            "outdated": false, "pinned": true
+          }]
+        }
+        """#.utf8))
+
+        guard case .available(let path, let packages) = status else {
+            return XCTFail("Expected an available Homebrew inventory")
+        }
+        XCTAssertEqual(path, "/opt/homebrew/bin/brew")
+        XCTAssertEqual(packages.count, 2)
+        let formula = try XCTUnwrap(packages.first { $0.kind == .formula })
+        XCTAssertEqual(formula.installedVersions, ["7.1.1"])
+        XCTAssertEqual(formula.latestVersion, "7.1.2_1")
+        XCTAssertEqual(formula.dependencies, [.init(kind: .formula, name: "libpng")])
+        XCTAssertTrue(formula.installedOnRequest)
+        XCTAssertTrue(formula.outdated)
+        let cask = try XCTUnwrap(packages.first { $0.kind == .cask })
+        XCTAssertEqual(cask.displayName, "Mozilla Firefox")
+        XCTAssertEqual(cask.installedVersions, ["129.0"])
+        XCTAssertEqual(cask.dependencies, [
+            .init(kind: .formula, name: "libpng"),
+            .init(kind: .cask, name: "xquartz"),
+        ])
+        XCTAssertEqual(cask.applicationPath, "/Applications/Firefox.app")
+        XCTAssertTrue(cask.pinned)
+    }
+
     @MainActor
     func testNativeBusyUsesThePersistedResourceNamespace() async throws {
         let runtime = HubRuntime(storageRoot: try temporaryStorage())
@@ -581,6 +623,26 @@ final class TailscaleServiceTests: XCTestCase {
         let availableState = await service.inspect()
         let mutationCount = await backend.mutationCount
         XCTAssertEqual(availableState.status, .available(origin: trust.origin))
+        XCTAssertEqual(mutationCount, 2)
+    }
+
+    func testServeCleanupFinishesAfterCallerCancellation() async throws {
+        let backend = FakeTailscaleBackend()
+        let service = TailscaleService(executable: URL(fileURLWithPath: "/bin/sh")) {
+            _, arguments in
+            try Task.checkCancellation()
+            return try await backend.run(arguments)
+        }
+
+        let plan = try await service.prepare()
+        _ = try await service.start(plan: plan)
+        let cleanup = Task { try await service.stop() }
+        cleanup.cancel()
+        try await cleanup.value
+
+        let state = await service.inspect()
+        let mutationCount = await backend.mutationCount
+        XCTAssertEqual(state.status, .available(origin: plan.origin))
         XCTAssertEqual(mutationCount, 2)
     }
 }

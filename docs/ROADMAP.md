@@ -66,7 +66,7 @@ Exit remains unverified: after login, a tailnet administrator can inspect status
 ## 3 — useful native capabilities
 
 - [x] Implement optional CPU, memory, thermal, and SMART drive-temperature checks as the bundled Monitor plugin; uptime is intentionally omitted.
-- [x] Implement bounded process controls, LaunchAgent status/restart, Homebrew status/actions, saved SSH peer probes, power checks, and notifications in Tools.
+- [x] Implement bounded process controls, LaunchAgent status/restart, saved SSH peer probes, power checks, and notifications in Tools, plus an installed formula/cask inventory and Homebrew actions in a dedicated Brew tab.
 - [x] Require attended setup for prompt-requiring operations and explicit native confirmation where applicable; privileged restart remains unsupported.
 - [x] Add a Home setup journey derived from Doctor, plugin enablement, launch-at-login, and actual remote availability.
 - [ ] Exercise native services and permission/lifecycle recovery on macOS after Xcode is ready.

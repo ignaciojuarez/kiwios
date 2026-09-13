@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000000000000000000001 /* app-icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* app-icon.icon */; };
 		02AF4B1B278F4C94875598F9 /* RemoteSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DA0D76F0E982E9BF06F4F6 /* RemoteSecurity.swift */; };
 		02CA12748FB8F4A4C2C06074 /* PluginMarketplaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E6CE20556E7DC65AB45AC7 /* PluginMarketplaceView.swift */; };
 		0A9B64DB150D26E888A5ADDA /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC3B51E31C10E3C2FA47A2B /* HomeView.swift */; };
@@ -17,7 +16,6 @@
 		123EF50506087F4B773DE2BB /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1F1CA38591B3D2A7B5446FB5 /* GRDB */; };
 		183896FA7C4DBFE188A20E52 /* PluginPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E427BC5710BD9D2BD75A7C77 /* PluginPolicy.swift */; };
 		18A22C518AAC88BF15680B7D /* catalog in Resources */ = {isa = PBXBuildFile; fileRef = 91AB0AEA63D51832C3458B47 /* catalog */; };
-		1BC889D1776AF466261F8BCF /* EventsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F132C9A504490E0389F83C0 /* EventsView.swift */; };
 		1C3EFEDE94DA2FBE3F5CD8C4 /* PluginConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C47B8370498E743C0E4C8CE /* PluginConfiguration.swift */; };
 		256C07C2234E8748C3CB58DF /* HubPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB72927288A3AEF26A09017 /* HubPresentation.swift */; };
 		2804714BBB3FDB54F774FD12 /* RemoteAccessPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C3231A4FE65010F4A5F618 /* RemoteAccessPanel.swift */; };
@@ -32,6 +30,7 @@
 		69A09016CAD16E2910561818 /* PluginInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39E16C4C7E74259DC4AF04A /* PluginInstaller.swift */; };
 		6AEE24CB2FA32EAC8ACD364E /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = 9308985B7C41FDD90F9B4FA5 /* Subprocess */; };
 		72A292086BC3CCA8D4DA3887 /* HubRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59782C166183299A221E0A8B /* HubRuntime.swift */; };
+		731EF4BEB78C0F969627E719 /* BrewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73F79DD560AF8403B2AE709D /* BrewView.swift */; };
 		74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F65F461C851BA86A09522DC /* Assets.xcassets */; };
 		797EC3EAC0744FB0BB5E2388 /* RuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79F328211F039186E5D2162 /* RuntimeTests.swift */; };
 		8A1BBB812637590442D1FD97 /* JobQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B07E50E74B46D1B0C24FB5 /* JobQueue.swift */; };
@@ -39,6 +38,7 @@
 		992BF122FAAA776B9FF60E85 /* HubSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1510FFE07F263B0B0F1F4313 /* HubSettingsView.swift */; };
 		A6610303B05CA61616A05352 /* PluginManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04963A16F368B506B6DC1DD9 /* PluginManifest.swift */; };
 		A6BD16D86BEF58E8CFFEBF89 /* TOMLDecoder in Frameworks */ = {isa = PBXBuildFile; productRef = 82C00C3B95129F44AFC39F27 /* TOMLDecoder */; };
+		A84134F204EE2FCABA317739 /* app-icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 43FCFAF3207E0FE11C203983 /* app-icon.icon */; };
 		AC267A0C1D5979D13AEE8344 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F71E7F8F672A33E59EEE7F /* Persistence.swift */; };
 		AFA2B318D781D734F5A49EEF /* PluginDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F47A0E9551777CA7459FAE /* PluginDiscovery.swift */; };
 		B23D6EEEBB614059D9FD2435 /* ManifestContractCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3B72EAD276CA457A847DE7 /* ManifestContractCompletionTests.swift */; };
@@ -52,6 +52,7 @@
 		E5634E743756B0C8368E84AC /* PluginManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFB43AED45605BE0AEA4B416 /* PluginManagementView.swift */; };
 		EB10A507E979B2DB6D1B1852 /* Watcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C728B89FB7420C5353A4C8AE /* Watcher.swift */; };
 		EE76F856DCD99C52308EB2C7 /* PluginConfigSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66F07AA66ACE80EE64BE9B2F /* PluginConfigSchema.swift */; };
+		F007803BC7021615BDCDFCAF /* EventsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EE4D5C7794F51CBF541642 /* EventsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,11 +66,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A10000000000000000000002 /* app-icon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = app-icon.icon; sourceTree = SOURCE_ROOT; };
 		027742968FDE49F4D3116E31 /* PluginContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginContracts.swift; sourceTree = "<group>"; };
 		04963A16F368B506B6DC1DD9 /* PluginManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManifest.swift; sourceTree = "<group>"; };
 		0BA53479E7A50E785653D880 /* TailscaleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleService.swift; sourceTree = "<group>"; };
-		0F132C9A504490E0389F83C0 /* EventsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsView.swift; sourceTree = "<group>"; };
 		1510FFE07F263B0B0F1F4313 /* HubSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubSettingsView.swift; sourceTree = "<group>"; };
 		17E93AB49A07A70716CB7132 /* NativeCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCapabilities.swift; sourceTree = "<group>"; };
 		1EE2D12A3FFAD9A72ABE36A2 /* PluginContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginContentView.swift; sourceTree = "<group>"; };
@@ -78,6 +77,7 @@
 		2F65F461C851BA86A09522DC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2FB72927288A3AEF26A09017 /* HubPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubPresentation.swift; sourceTree = "<group>"; };
 		37F47A0E9551777CA7459FAE /* PluginDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginDiscovery.swift; sourceTree = "<group>"; };
+		43FCFAF3207E0FE11C203983 /* app-icon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = "app-icon.icon"; sourceTree = "<group>"; };
 		4CB1B98A7F75B672786150E8 /* PluginCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginCatalog.swift; sourceTree = "<group>"; };
 		4F3B72EAD276CA457A847DE7 /* ManifestContractCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManifestContractCompletionTests.swift; sourceTree = "<group>"; };
 		542D9745D13DF474FEFD36C4 /* NativeToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeToolsView.swift; sourceTree = "<group>"; };
@@ -88,6 +88,8 @@
 		61F441D2631DA2845758BAD0 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Web; path = KiwiOS/Web; sourceTree = SOURCE_ROOT; };
 		66F07AA66ACE80EE64BE9B2F /* PluginConfigSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginConfigSchema.swift; sourceTree = "<group>"; };
 		6B3056A09229B102CF74591D /* KiwiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiwiOSApp.swift; sourceTree = "<group>"; };
+		73F79DD560AF8403B2AE709D /* BrewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrewView.swift; sourceTree = "<group>"; };
+		76EE4D5C7794F51CBF541642 /* EventsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsView.swift; sourceTree = "<group>"; };
 		82B07E50E74B46D1B0C24FB5 /* JobQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobQueue.swift; sourceTree = "<group>"; };
 		85450F213B7D38822F2A8021 /* HubIntegrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubIntegrations.swift; sourceTree = "<group>"; };
 		89E6CE20556E7DC65AB45AC7 /* PluginMarketplaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginMarketplaceView.swift; sourceTree = "<group>"; };
@@ -148,7 +150,7 @@
 		B1D656B5DE3F2B38D2A59399 = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000002 /* app-icon.icon */,
+				43FCFAF3207E0FE11C203983 /* app-icon.icon */,
 				91AB0AEA63D51832C3458B47 /* catalog */,
 				9770E5B2876C93010320E948 /* plugins */,
 				FC1CD91ED112AFB4815DF47D /* KiwiOS */,
@@ -161,6 +163,8 @@
 			isa = PBXGroup;
 			children = (
 				2F65F461C851BA86A09522DC /* Assets.xcassets */,
+				73F79DD560AF8403B2AE709D /* BrewView.swift */,
+				76EE4D5C7794F51CBF541642 /* EventsView.swift */,
 				9DC3B51E31C10E3C2FA47A2B /* HomeView.swift */,
 				95ADCBF900B92EE881FBF427 /* HostDoctor.swift */,
 				85450F213B7D38822F2A8021 /* HubIntegrations.swift */,
@@ -169,7 +173,6 @@
 				59782C166183299A221E0A8B /* HubRuntime.swift */,
 				1510FFE07F263B0B0F1F4313 /* HubSettingsView.swift */,
 				82B07E50E74B46D1B0C24FB5 /* JobQueue.swift */,
-				0F132C9A504490E0389F83C0 /* EventsView.swift */,
 				6B3056A09229B102CF74591D /* KiwiOSApp.swift */,
 				17E93AB49A07A70716CB7132 /* NativeCapabilities.swift */,
 				542D9745D13DF474FEFD36C4 /* NativeToolsView.swift */,
@@ -287,9 +290,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000000000000000000001 /* app-icon.icon in Resources */,
 				74890F1958F3D427B89094B5 /* Assets.xcassets in Resources */,
 				D56C30418B862E4BABB1D30D /* Web in Resources */,
+				A84134F204EE2FCABA317739 /* app-icon.icon in Resources */,
 				18A22C518AAC88BF15680B7D /* catalog in Resources */,
 				3968916EFEA60116ED8CA63E /* plugins in Resources */,
 			);
@@ -302,6 +305,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				731EF4BEB78C0F969627E719 /* BrewView.swift in Sources */,
+				F007803BC7021615BDCDFCAF /* EventsView.swift in Sources */,
 				0A9B64DB150D26E888A5ADDA /* HomeView.swift in Sources */,
 				CA299375462EE2B958989545 /* HostDoctor.swift in Sources */,
 				C889E1BBF2B8CE4EC00232BE /* HubIntegrations.swift in Sources */,
@@ -310,7 +315,6 @@
 				72A292086BC3CCA8D4DA3887 /* HubRuntime.swift in Sources */,
 				992BF122FAAA776B9FF60E85 /* HubSettingsView.swift in Sources */,
 				8A1BBB812637590442D1FD97 /* JobQueue.swift in Sources */,
-				1BC889D1776AF466261F8BCF /* EventsView.swift in Sources */,
 				0FE1116E1212D6A73DE534C7 /* KiwiOSApp.swift in Sources */,
 				0E8424D8B1E553034B777184 /* NativeCapabilities.swift in Sources */,
 				CB58DD1BBFA4206B01D0D61C /* NativeToolsView.swift in Sources */,
@@ -379,7 +383,7 @@
 		760BCF324274BCD9D0BF6C92 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = app-icon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "app-icon";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_APP_SANDBOX = NO;
@@ -543,7 +547,7 @@
 		FBC85201D79D2B35D4254AFC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = app-icon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "app-icon";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_APP_SANDBOX = NO;
