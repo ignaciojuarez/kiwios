@@ -1,0 +1,68 @@
+id = "monitor"
+name = "Monitor"
+version = "0.1.0"
+kiwios_api = "1"
+license = "MIT"
+brew = ["smartmontools"]
+
+[permissions]
+exec = ["awk", "diskutil", "ioreg", "memory_pressure", "plutil", "pmset", "smartctl", "top"]
+
+[[checks]]
+id = "cpu"
+label = "CPU usage"
+command = ["./monitor.sh", "cpu"]
+every = "30s"
+timeout = "10s"
+
+[[checks]]
+id = "memory"
+label = "Memory usage"
+command = ["./monitor.sh", "memory"]
+every = "30s"
+timeout = "10s"
+
+[[checks]]
+id = "thermals"
+label = "Thermal pressure"
+command = ["./monitor.sh", "thermals"]
+every = "1m"
+timeout = "10s"
+
+[[checks]]
+id = "drive-temperatures"
+label = "Drive temperatures"
+command = ["./monitor.sh", "drive-temperatures"]
+every = "1m"
+timeout = "20s"
+
+[[ui.pages]]
+id = "overview"
+title = "Monitor"
+kind = "checks"
+source = "checks"
+
+[[ui.pages]]
+id = "drives"
+title = "Drive Temperatures"
+kind = "table"
+source = "checks.drive-temperatures"
+
+[[ui.sidebar]]
+id = "monitor"
+label = "Monitor"
+page = "overview"
+
+[[ui.widgets]]
+id = "cpu"
+title = "CPU"
+kind = "stat"
+source = "checks.cpu"
+size = "1x1"
+
+[[ui.widgets]]
+id = "memory"
+title = "Memory"
+kind = "stat"
+source = "checks.memory"
+size = "1x1"

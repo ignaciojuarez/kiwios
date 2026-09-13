@@ -65,6 +65,100 @@ final class ManifestValidationTests: XCTestCase {
         XCTAssertEqual(manifest.ui.pages.map(\.id), ["status", "activity"])
         XCTAssertEqual(manifest.ui.sidebar.first?.page, "status")
         XCTAssertEqual(manifest.ui.widgets.first?.source, "checks.health")
+        XCTAssertEqual(manifest.brew, [])
+    }
+
+    func testValidatesAndDetectsHomebrewRequirements() throws {
+        let root = try temporaryPlugin(manifest: baseManifest + "\nbrew = [\"smartmontools\"]")
+        XCTAssertEqual(try PluginLoader().load(from: root).manifest.brew, ["smartmontools"])
+
+        let cellar = root.appendingPathComponent("Cellar", isDirectory: true)
+        let version = cellar.appendingPathComponent("smartmontools/7.5", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: version,
+            withIntermediateDirectories: true
+        )
+        try Data("{}".utf8).write(to: version.appendingPathComponent("INSTALL_RECEIPT.json"))
+        let installation = BrewFormulaStatus.Installation(executable: "/test/brew", cellar: cellar)
+        XCTAssertTrue(installation.isInstalled("smartmontools"))
+        XCTAssertFalse(installation.isInstalled("missing"))
+        let receipt = try XCTUnwrap(installation.receiptIdentity("smartmontools"))
+        try Data("{\"changed\":true}".utf8).write(
+            to: version.appendingPathComponent("INSTALL_RECEIPT.json")
+        )
+        XCTAssertNotEqual(installation.receiptIdentity("smartmontools"), receipt)
+
+        let invalid = try temporaryPlugin(manifest: baseManifest + "\nbrew = [\"owner/tap/formula\"]")
+        XCTAssertThrowsError(try PluginLoader().load(from: invalid))
+    }
+
+    func testRejectsTCCGrantsWithoutPromptFreePreflight() throws {
+        for grant in ["fda", "apple-events", "developer-tools", "local-network"] {
+            let root = try temporaryPlugin(manifest: baseManifest + """
+
+            [permissions]
+            tcc = ["\(grant)"]
+            """)
+            XCTAssertThrowsError(try PluginLoader().load(from: root), grant) { error in
+                XCTAssertEqual(
+                    error as? PluginLoadError,
+                    .invalidPermission(field: "tcc", value: grant)
+                )
+            }
+        }
+    }
+
+    func testDoctorReadinessUsesOnlyHostFindings() {
+        let required = [
+            DoctorFinding(id: "session", title: "Session", status: .passed, detail: "Ready"),
+            DoctorFinding(id: "storage", title: "Storage", status: .passed, detail: "Ready"),
+            DoctorFinding(id: "host-tools", title: "Tools", status: .passed, detail: "Ready"),
+            DoctorFinding(id: "app-signing", title: "Signing", status: .passed, detail: "Ready"),
+            DoctorFinding(id: "database", title: "Database", status: .passed, detail: "Ready"),
+            DoctorFinding(id: "launch-at-login", title: "Login", status: .passed, detail: "Ready"),
+        ]
+        let findings = required + [
+            DoctorFinding(id: "monitor/brew-smartmontools", title: "Monitor", status: .blocked, detail: "Missing"),
+        ]
+
+        XCTAssertTrue(DoctorReadiness.hostIsReady(findings))
+        XCTAssertFalse(DoctorReadiness.hostIsReady([
+            DoctorFinding(id: "session", title: "Session", status: .blocked, detail: "Blocked"),
+            findings.last!,
+        ]))
+        XCTAssertTrue(DoctorReadiness.hostIsReady(required.dropLast() + [
+            DoctorFinding(id: "launch-at-login", title: "Login", status: .blocked, detail: "Blocked"),
+        ], excluding: ["launch-at-login"]))
+    }
+
+    func testDoctorClassifiesStorageCapacityAndSigning() {
+        func storage(_ capacity: Int64?) -> DoctorFinding {
+            HostDoctor.storageFinding(
+                isDirectory: true, isReadable: true, isWritable: true, isReadOnly: false,
+                availableCapacity: capacity
+            )
+        }
+
+        XCTAssertEqual(storage(nil).status, .unknown)
+        XCTAssertEqual(storage(HostDoctor.minimumAvailableCapacity - 1).status, .blocked)
+        XCTAssertEqual(storage(HostDoctor.minimumAvailableCapacity).status, .passed)
+        XCTAssertEqual(HostDoctor.signingFinding(teamIdentifier: nil, inspectionSucceeded: true).status, .blocked)
+        XCTAssertEqual(HostDoctor.signingFinding(teamIdentifier: "TEAM", inspectionSucceeded: true).status, .passed)
+        XCTAssertEqual(HostDoctor.fileVaultFinding("FileVault is On.").status, .passed)
+        XCTAssertEqual(HostDoctor.fileVaultFinding("indeterminate").status, .unknown)
+    }
+
+    func testHomebrewInstallRequiresExplicitPackageConfirmation() {
+        let operation = NativeOperation.homebrewInstall(packages: ["smartmontools"])
+        XCTAssertEqual(operation.confirmationTitle, "Install 1 Homebrew package?")
+        XCTAssertEqual(operation.confirmationDetail, "KiwiOS will run Homebrew to install:\nsmartmontools")
+        XCTAssertEqual(operation.resource, "homebrew")
+
+        let removal = NativeOperation.homebrewUninstall(packages: ["smartmontools"])
+        XCTAssertEqual(removal.confirmationTitle, "Uninstall 1 Homebrew package?")
+        XCTAssertTrue(removal.confirmationDetail?.contains("smartmontools") == true)
+        XCTAssertTrue(removal.confirmationDetail?.contains("not visible") == true)
+        XCTAssertEqual(removal.resource, "homebrew")
     }
 
     func testAbsentDurationsRemainAbsentForRuntimeDefaults() throws {
@@ -88,6 +182,53 @@ final class ManifestValidationTests: XCTestCase {
         XCTAssertNil(manifest.checks[0].timeout)
         XCTAssertNil(manifest.actions[0].timeout)
         XCTAssertNil(manifest.actions[0].lock)
+    }
+
+    func testWatchReferencesExistingPluginCheckAndAction() throws {
+        let valid = try temporaryPlugin(manifest: baseManifest + """
+
+        [watch]
+        status = "health"
+        start = "start"
+
+        [[checks]]
+        id = "health"
+        label = "Health"
+        command = ["health-tool"]
+
+        [[actions]]
+        id = "start"
+        label = "Start"
+        confirm = false
+        command = ["start-tool"]
+        """)
+        let watch = try XCTUnwrap(PluginLoader().load(from: valid).manifest.watch)
+        XCTAssertEqual(watch.status, "health")
+        XCTAssertEqual(watch.start, "start")
+
+        let missing = try temporaryPlugin(manifest: baseManifest + """
+
+        [watch]
+        status = "missing"
+        """)
+        XCTAssertThrowsError(try PluginLoader().load(from: missing)) { error in
+            XCTAssertEqual(error as? PluginLoadError, .invalidWatchReference("checks.missing"))
+        }
+
+        let missingAction = try temporaryPlugin(manifest: baseManifest + """
+
+        [watch]
+        status = "health"
+        start = "missing"
+
+        [[checks]]
+        id = "health"
+        label = "Health"
+        command = ["health-tool"]
+        """)
+        XCTAssertThrowsError(try PluginLoader().load(from: missingAction)) { error in
+            XCTAssertEqual(error as? PluginLoadError, .invalidWatchReference("actions.missing"))
+        }
     }
 
     func testRejectsUnknownKeysAtEveryManifestScope() throws {
@@ -359,18 +500,32 @@ final class ManifestValidationTests: XCTestCase {
         sleep 0.05
         printf '{"t":"ok","msg":"done"}\n'
         """)
+        let defaultsStorage = try temporaryStorage()
         let defaultsRuntime = HubRuntime(
             pluginRoot: defaultsRoot,
             runner: CommandRunner(
                 timeout: 0.001,
-                pluginDataRoot: defaultsRoot.appendingPathComponent("PluginData")
-            )
+                pluginDataRoot: defaultsStorage.appendingPathComponent("PluginData")
+            ),
+            storageRoot: defaultsStorage
         )
-
-        await defaultsRuntime.runCheck(pluginID: "manifest-tests", checkID: "check")
-        XCTAssertEqual(defaultsRuntime.plugins.first?.status, .ok)
-        await defaultsRuntime.runAction(pluginID: "manifest-tests", actionID: "action")
-        XCTAssertEqual(defaultsRuntime.plugins.first?.status, .ok)
+        do {
+            try await enable("manifest-tests", in: defaultsRuntime)
+            let initialCheck = try await terminalCheckStatus(in: defaultsRuntime, contributionID: "check")
+            XCTAssertEqual(initialCheck.status, .succeeded)
+            await defaultsRuntime.runCheck(pluginID: "manifest-tests", checkID: "check")
+            let manualCheck = try await terminalCheckStatus(
+                in: defaultsRuntime, contributionID: "check", after: initialCheck.date
+            )
+            XCTAssertEqual(manualCheck.status, .succeeded)
+            await defaultsRuntime.runAction(pluginID: "manifest-tests", actionID: "action")
+            let actionJob = try await terminalActionStatus(in: defaultsRuntime, contributionID: "action")
+            XCTAssertEqual(actionJob.status, .succeeded)
+        } catch {
+            await defaultsRuntime.shutdown()
+            throw error
+        }
+        await defaultsRuntime.shutdown()
 
         let overrideRoot = try temporaryPlugin(manifest: baseManifest + """
 
@@ -392,18 +547,32 @@ final class ManifestValidationTests: XCTestCase {
         sleep 0.05
         printf '{"t":"ok","msg":"done"}\n'
         """)
+        let overrideStorage = try temporaryStorage()
         let overrideRuntime = HubRuntime(
             pluginRoot: overrideRoot,
             runner: CommandRunner(
                 timeout: 2,
-                pluginDataRoot: overrideRoot.appendingPathComponent("PluginData")
-            )
+                pluginDataRoot: overrideStorage.appendingPathComponent("PluginData")
+            ),
+            storageRoot: overrideStorage
         )
-
-        await overrideRuntime.runCheck(pluginID: "manifest-tests", checkID: "check")
-        XCTAssertEqual(overrideRuntime.plugins.first?.status, .error)
-        await overrideRuntime.runAction(pluginID: "manifest-tests", actionID: "action")
-        XCTAssertEqual(overrideRuntime.plugins.first?.status, .error)
+        do {
+            try await enable("manifest-tests", in: overrideRuntime)
+            let initialCheck = try await terminalCheckStatus(in: overrideRuntime, contributionID: "check")
+            XCTAssertEqual(initialCheck.status, .timedOut)
+            await overrideRuntime.runCheck(pluginID: "manifest-tests", checkID: "check")
+            let manualCheck = try await terminalCheckStatus(
+                in: overrideRuntime, contributionID: "check", after: initialCheck.date
+            )
+            XCTAssertEqual(manualCheck.status, .timedOut)
+            await overrideRuntime.runAction(pluginID: "manifest-tests", actionID: "action")
+            let actionJob = try await terminalActionStatus(in: overrideRuntime, contributionID: "action")
+            XCTAssertEqual(actionJob.status, .timedOut)
+        } catch {
+            await overrideRuntime.shutdown()
+            throw error
+        }
+        await overrideRuntime.shutdown()
     }
 
     private let baseManifest = """
@@ -431,6 +600,61 @@ final class ManifestValidationTests: XCTestCase {
         try Data(manifest.utf8).write(to: root.appendingPathComponent("plugin.toml"))
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         return root
+    }
+
+    private func temporaryStorage() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiwiOSTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
+    }
+
+    @MainActor
+    private func enable(_ pluginID: String, in runtime: HubRuntime) async throws {
+        await runtime.waitUntilReady()
+        await runtime.requestEnable(pluginID: pluginID)
+        let review = try XCTUnwrap(runtime.pendingReview,
+            runtime.operationError ?? runtime.discoveryError ?? "Plugin review was not created")
+        await runtime.approvePlugin(review)
+        XCTAssertEqual(runtime.plugins.first(where: { $0.id == pluginID })?.lifecycle, .active)
+    }
+
+    @MainActor
+    private func terminalActionStatus(
+        in runtime: HubRuntime, contributionID: String
+    ) async throws -> (status: JobStatus, date: Date) {
+        let source = "actions.\(contributionID)"
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            await runtime.refreshResults()
+            if let plugin = runtime.plugins.first(where: { $0.id == "manifest-tests" }),
+               let result = plugin.results[source], let date = plugin.resultDates[source] {
+                return (HubRuntime.jobStatus(result.outcome), date)
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Timed out waiting for terminal action \(contributionID)")
+        throw NSError(domain: "KiwiOSTests", code: 1)
+    }
+
+    @MainActor
+    private func terminalCheckStatus(
+        in runtime: HubRuntime, contributionID: String, after previousDate: Date? = nil
+    ) async throws -> (status: JobStatus, date: Date) {
+        let source = "checks.\(contributionID)"
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            await runtime.refreshResults()
+            if let plugin = runtime.plugins.first(where: { $0.id == "manifest-tests" }),
+               let result = plugin.results[source], let date = plugin.resultDates[source],
+               previousDate.map({ date > $0 }) ?? true {
+                return (HubRuntime.jobStatus(result.outcome), date)
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Timed out waiting for check result \(contributionID)")
+        throw NSError(domain: "KiwiOSTests", code: 1)
     }
 
     private func makeExecutable(at url: URL, contents: String = "#!/bin/sh\nexit 0\n") throws {

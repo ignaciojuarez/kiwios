@@ -1,225 +1,137 @@
 import SwiftUI
-
-private enum Nav: String, Hashable, CaseIterable {
-    case home, monitor, jobs, plugins, settings
-    var title: String {
-        switch self {
-        case .home: "Home"
-        case .monitor: "Monitor"
-        case .jobs: "Jobs"
-        case .plugins: "Plugins"
-        case .settings: "Settings"
-        }
-    }
-}
+import AppKit
 
 struct RootView: View {
     @EnvironmentObject private var runtime: HubRuntime
-    @State private var nav: Nav? = .home
+    @State private var selection: String? = "home"
 
     var body: some View {
         NavigationSplitView {
-            List(Nav.allCases, id: \.self, selection: $nav) { item in
-                Label(item.title, systemImage: icon(item))
+            List(selection: $selection) {
+                Label("Home", systemImage: "house").tag("home")
+                Label("Tools", systemImage: "wrench.and.screwdriver").tag("tools")
+                Label("Events", systemImage: "terminal").tag("events")
+                Label("Plugins", systemImage: "puzzlepiece.extension").tag("plugins")
+                Label("Discover", systemImage: "shippingbox").tag("discover")
+                ForEach(runtime.layout.sidebar, id: \.self) { key in
+                    if let entry = sidebarEntry(key) {
+                        Label(entry.label, systemImage: "rectangle.grid.1x2").tag("page:\(entry.pluginID)/\(entry.pageID)")
+                    }
+                }
+                Label("Settings", systemImage: "gearshape").tag("settings")
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
             .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
-            switch nav ?? .home {
-            case .home: HomeView()
-            case .monitor: PlaceholderView(title: "Monitor", note: "CPU, RAM, disks — native.monitor")
-            case .jobs: PlaceholderView(title: "Jobs", note: "Queue, lock, log — native.jobs")
-            case .plugins: PluginsView()
-            case .settings: PlaceholderView(title: "Settings", note: "Sidebar order, Serve, setup / remote")
+            VStack(spacing: 0) {
+                if let error = runtime.operationError {
+                    HStack(alignment: .top) {
+                        Image(systemName: "exclamationmark.triangle")
+                        Text(error).textSelection(.enabled)
+                        Spacer()
+                        Button("Dismiss") { runtime.clearError() }
+                    }
+                    .padding().background(Color.orange.opacity(0.12))
+                    .accessibilityElement(children: .contain)
+                }
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .background(KiwiTheme.bg)
         }
         .tint(KiwiTheme.accent)
         .preferredColorScheme(.dark)
-    }
-
-    private func icon(_ item: Nav) -> String {
-        switch item {
-        case .home: "house"
-        case .monitor: "waveform.path.ecg"
-        case .jobs: "list.bullet.rectangle"
-        case .plugins: "puzzlepiece.extension"
-        case .settings: "gearshape"
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await runtime.refreshDoctor() }
         }
-    }
-}
-
-private struct HomeView: View {
-    @EnvironmentObject private var runtime: HubRuntime
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("KiwiOS")
-                    .font(.largeTitle.weight(.semibold))
-                Text("Mac mini hub")
-                    .foregroundStyle(.secondary)
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    StatCard(title: "Host", value: "—", footnote: "native.monitor")
-                    StatCard(title: "Jobs", value: "0", footnote: "idle")
-                    StatCard(
-                        title: "Plugins",
-                        value: "\(runtime.plugins.count)",
-                        footnote: runtime.plugins.isEmpty ? "none discovered" : runtime.plugins.map(\.manifest.name).joined(separator: ", ")
-                    )
-                    StatCard(
-                        title: "Checks",
-                        value: "\(runtime.plugins.flatMap(\.manifest.checks).count)",
-                        footnote: runtime.plugins.contains { $0.status == .running } ? "running" : "ready"
-                    )
-                }
-            }
-            .padding(28)
-            .frame(maxWidth: 820, alignment: .leading)
+        .sheet(item: $runtime.pendingReview) { review in
+            PluginApprovalView(review: review)
+                .environmentObject(runtime)
         }
-        .background(KiwiTheme.bg)
-        .navigationTitle("Home")
-    }
-}
-
-private struct PluginsView: View {
-    @EnvironmentObject private var runtime: HubRuntime
-    @State private var pendingAction: PendingAction?
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                if runtime.plugins.isEmpty {
-                    ContentUnavailableView(
-                        "No plugins",
-                        systemImage: "puzzlepiece.extension",
-                        description: Text(runtime.discoveryError ?? "No bundled plugins were discovered")
-                    )
+        .sheet(item: $runtime.pendingInstallation) { review in InstallationApprovalView(review: review).environmentObject(runtime) }
+        .sheet(item: $runtime.pendingRemoval) { review in PluginRemovalView(review: review).environmentObject(runtime) }
+        .sheet(item: $runtime.native.pendingConfirmation) { confirmation in
+            VStack(alignment: .leading, spacing: 18) {
+                Text(confirmation.title).font(.title2)
+                if let detail = confirmation.operation.confirmationDetail {
+                    Text(detail).textSelection(.enabled)
                 }
-
-                ForEach(runtime.plugins) { plugin in
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text(plugin.manifest.name)
-                                .font(.title2.weight(.medium))
-                            Text(plugin.manifest.version)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(plugin.status.label)
-                                .foregroundStyle(plugin.status.color)
-                        }
-
-                        Text(plugin.message)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.secondary)
-
-                        HStack {
-                            ForEach(plugin.manifest.checks) { check in
-                                Button(check.label) {
-                                    Task { await runtime.runCheck(pluginID: plugin.id, checkID: check.id) }
-                                }
-                                .disabled(plugin.status == .running)
-                            }
-
-                            ForEach(plugin.manifest.actions) { action in
-                                Button(action.label) {
-                                    if action.confirm {
-                                        pendingAction = PendingAction(pluginID: plugin.id, action: action)
-                                    } else {
-                                        Task { await runtime.runAction(pluginID: plugin.id, actionID: action.id) }
-                                    }
-                                }
-                                .disabled(plugin.status == .running)
-                            }
-                        }
+                Text("KiwiOS will record and run this operation after confirmation. Confirmation expires after one minute.")
+                HStack {
+                    Button("Cancel", role: .cancel) {
+                        Task { await runtime.cancelNativeConfirmation(confirmation) }
                     }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(KiwiTheme.card, in: RoundedRectangle(cornerRadius: 12))
+                    Spacer()
+                    Button("Confirm action") { Task { await runtime.confirmNativeOperation(confirmation) } }
+                        .buttonStyle(.borderedProminent)
+                }
+            }.padding(28).frame(width: 480)
+        }
+        .sheet(item: $runtime.pendingConfirmation) { confirmation in
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Run \(confirmation.label)?").font(.title2)
+                Text("This action runs as your Mac user. Review the plugin and action before continuing.")
+                Text("Confirmation expires after one minute.").foregroundStyle(.secondary)
+                HStack {
+                    Button("Cancel", role: .cancel) { runtime.pendingConfirmation = nil }
+                    Spacer()
+                    Button("Run action") { Task { await runtime.confirmAction(confirmation) } }
+                        .buttonStyle(.borderedProminent)
                 }
             }
+            .padding(28).frame(width: 460)
         }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(KiwiTheme.bg)
-        .navigationTitle("Plugins")
-        .confirmationDialog(
-            "Run \(pendingAction?.action.label ?? "action")?",
-            isPresented: Binding(
-                get: { pendingAction != nil },
-                set: { if !$0 { pendingAction = nil } }
-            )
-        ) {
-            Button("Run") {
-                guard let pendingAction else { return }
-                self.pendingAction = nil
-                Task {
-                    await runtime.runAction(
-                        pluginID: pendingAction.pluginID,
-                        actionID: pendingAction.action.id
-                    )
-                }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch selection ?? "home" {
+        case "home": HomeView(
+            openPlugins: { selection = "plugins" },
+            openSettings: { selection = "settings" }
+        )
+        case "tools": NativeToolsView(snapshot: runtime.native.toolsSnapshot, mode: runtime.mode,
+            peers: runtime.native.peers, isRefreshing: runtime.native.toolsRefreshing,
+            isBusy: { runtime.isNativeBusy($0) }, refresh: { await runtime.refreshNativeTools() },
+            request: { runtime.requestNativeOperation($0) },
+            addPeer: { peer in await runtime.addSSHPeer(peer) },
+            removePeer: { peer in Task { await runtime.removeSSHPeer(peer) } })
+            .task { if runtime.native.toolsSnapshot == nil { await runtime.refreshNativeTools() } }
+        case "discover": PluginMarketplaceView()
+        case "events": EventsView()
+        case "plugins": PluginsView()
+        case "settings": HubSettingsView()
+        default:
+            if let descriptor = selectedPage {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(descriptor.page.title).font(.largeTitle)
+                        PluginContentView(plugin: descriptor.plugin, kind: descriptor.page.kind, source: descriptor.page.source)
+                    }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
+                }.navigationTitle(descriptor.page.title)
+            } else {
+                ContentUnavailableView("Page unavailable", systemImage: "rectangle.slash",
+                    description: Text("The saved page belongs to a plugin that is not currently available."))
             }
-            Button("Cancel", role: .cancel) { pendingAction = nil }
         }
+    }
+    private var selectedPage: (plugin: PluginState, page: PluginPage)? {
+        guard let selection, selection.hasPrefix("page:") else { return nil }
+        let parts = selection.dropFirst(5).split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let plugin = runtime.plugins.first(where: { $0.id == parts[0] && $0.lifecycle == .active }),
+              let page = plugin.manifest.ui.pages.first(where: { $0.id == parts[1] }) else { return nil }
+        return (plugin, page)
+    }
+    private func sidebarEntry(_ key: String) -> (label: String, pluginID: String, pageID: String)? {
+        let parts = key.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let plugin = runtime.plugins.first(where: { $0.id == parts[0] && $0.lifecycle == .active }),
+              let item = plugin.manifest.ui.sidebar.first(where: { $0.id == parts[1] }) else { return nil }
+        return (item.label, plugin.id, item.page)
     }
 }
 
-private struct PendingAction {
-    let pluginID: String
-    let action: PluginAction
-}
-
-private struct PlaceholderView: View {
-    let title: String
-    let note: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.title2.weight(.medium))
-            Text(note).foregroundStyle(.secondary)
-        }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(KiwiTheme.bg)
-        .navigationTitle(title)
-    }
-}
-
-private struct StatCard: View {
-    let title: String
-    let value: String
-    let footnote: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title.weight(.semibold))
-            Text(footnote)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(KiwiTheme.card, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
 
 enum KiwiTheme {
     static let accent = Color(red: 0.72, green: 0.95, blue: 0.29)
     static let bg = Color(red: 0.06, green: 0.06, blue: 0.07)
     static let card = Color(red: 0.11, green: 0.11, blue: 0.12)
-}
-
-private extension PluginRunStatus {
-    var color: Color {
-        switch self {
-        case .idle: .secondary
-        case .running: .blue
-        case .ok: .green
-        case .warn: .orange
-        case .error: .red
-        }
-    }
 }

@@ -2,7 +2,7 @@
 
 KiwiOS owns all pixels: navigation, responsive layout, accessibility, loading/error states, confirmation, and theme. Plugins contribute descriptors in `plugin.toml` and JSON state through `kiwios.watch/1`. They cannot provide HTML, CSS, JavaScript, iframes, routes, or arbitrary links.
 
-The macOS window and PWA share the same information architecture. On a phone, the sidebar becomes a navigation stack and tables become rows.
+The macOS app renders all API 1 kinds with native SwiftUI. The host-owned PWA renders the same descriptors with phone-accessible navigation and horizontally scrollable tables. Inactive plugins contribute no Home widgets or sidebar pages. Home stat widgets omit result timestamps and descriptive source metadata, and retain the previous value until refreshed state arrives. Routine check rows omit result timestamps. Actions expose their state through plugin views, while routine monitoring checks update plugin content without creating visible history or separate log files.
 
 ## Sources
 
@@ -28,8 +28,9 @@ Sources cannot cross plugin boundaries. A missing source is a manifest validatio
 | `table` | `checks.<id>` | `state.columns` plus `state.rows` |
 | `log` | one check or action | bounded captured stdout/stderr |
 | `form` | `config` | supported config-schema fields |
+| `watchers` | `watchers` | one session row per active plugin with a valid `[watch]` declaration |
 
-`stat` values are strings or numbers. `delta` is a string; KiwiOS does not infer whether it is good or bad in API 1.
+For `stat`, the state object may contain only `value`, `unit`, `detail`, and `delta`. `value` is required and is a string or number; the other three fields are optional strings. KiwiOS does not infer whether `delta` is good or bad in API 1. Missing live data and invalid shapes render an explicit unavailable or error state.
 
 A table state has this shape:
 
@@ -45,7 +46,7 @@ A table state has this shape:
 }
 ```
 
-Column and row IDs use the contribution-ID grammar. Cell values are strings, numbers, booleans, or null. API 1 tables are capped at 100 rows and 12 columns; plugins should expose a narrower check rather than paginate through the UI contract.
+Table state contains exactly `columns` and `rows`. A table has 1–12 columns and at most 100 rows. Each column contains exactly a unique contribution-ID `id` and a nonblank `label`; `id` is reserved for row identity and cannot be a column ID. Each row contains exactly its unique contribution-ID `id` and one cell for every declared column. Cell values are strings, numbers, booleans, or null. Nested arrays, objects, unknown cells, and missing cells make the table unavailable. Plugins should expose a narrower check rather than paginate through the UI contract.
 
 Unknown kinds make that contribution unavailable and put the plugin in `error` on an API 1 host.
 
@@ -64,24 +65,30 @@ label = "Service"
 page = "status"
 
 [[ui.widgets]]
-id = "uptime"
-title = "Uptime"
+id = "health"
+title = "Health"
 kind = "stat"
-source = "checks.uptime"
+source = "checks.health"
 size = "1x1"
 ```
 
 A page contains one kind in API 1. A plugin may register zero or more pages, sidebar items, and widgets. Sidebar entries reference a page in the same plugin. `size` is `1x1` or `2x1`; it is only the initial suggestion.
 
-The user owns Home composition, sidebar order, and widget size. Plugin install or update never changes an existing layout. Unknown saved IDs are retained but skipped so reinstalling a plugin restores its placement. Settings remains pinned.
+The user owns Home composition, sidebar order, widget visibility, and whether a widget uses its normal or wide presentation. KiwiOS persists those choices. Installing or updating a plugin initializes contributions only when no saved layout exists and does not rewrite an existing layout. Removed plugins have their saved layout entries deleted. Settings remains pinned.
 
 ## Host-owned behavior
 
-- Checks render `loading`, `ok`, `warn`, `error`, `stale`, and `unavailable` consistently.
+- Checks and actions distinguish running, succeeded, warning, failed, timed-out, canceled, interrupted, and unavailable results. While a job runs, live progress, state, and bounded logs replace the previous terminal presentation.
 - Buttons are disabled while their lock is held. `confirm = true` always uses a KiwiOS confirmation dialog.
+- Plugins shows one configuration editor rather than repeating declared form pages. Native and PWA editors send changed fields with an expected config revision, retain drafts after a conflict, and require an explicit selection for required enums without a default. Integers use the safe JSON range documented in the plugin contract. Forms render strings, numbers, integers, booleans, and enums. Write-only fields use secure controls, can change only in setup mode, and remain blank to preserve an existing secret.
 - Titles, labels, values, and messages are treated as untrusted text and escaped.
 - Every control has a keyboard path and accessibility label derived from its manifest label.
-- Empty collections show an explicit empty state. Old data shows its age.
+- Empty collections show an explicit empty state. Old data shows its age. A disconnected PWA labels displayed results as potentially old and disables mutations; it never queues offline actions.
+- PWA polling preserves focused and unsaved configuration edits, including across disconnection. Draft fields remain editable offline; Save requires a live connection. Blank numeric fields and the enum keep-current choice preserve saved values or defaults rather than clearing them. Secret fields explain how to update them in attended setup and never render an editable remote secret control.
+- Home guides local setup using current Doctor, plugin, launch-at-login, and remote availability state. Interrupted-action controls request fresh work through ordinary confirmation; they never resume or replay the old action.
 - Plugin output cannot choose colors, fonts, raw SF Symbols, or accessibility semantics in API 1.
+- Events is a host-owned terminal-style tab with one latest line per plugin. It consumes the shared event protocol and is separate from action state in plugin views.
 
 New visual needs should first be tested against an existing kind. After API 1 freezes, adding a kind requires a new `kiwios_api` version.
+
+Plugin action views render retained, bounded progress. Native Tools keeps failed SSH peer saves open for correction and refreshes affected host state after operations.

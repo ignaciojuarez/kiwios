@@ -4,10 +4,124 @@ import XCTest
 
 final class RuntimeTests: XCTestCase {
     @MainActor
-    func testRuntimeDiscoversBundledHelloPlugin() {
-        let runtime = HubRuntime()
+    func testNativeBusyUsesThePersistedResourceNamespace() async throws {
+        let runtime = HubRuntime(storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+        runtime.jobs = [StoredJob(
+            id: UUID(), pluginID: "@native", contributionID: "homebrew-install",
+            kind: .action, resource: "@native/homebrew", status: .queued,
+            requestedBy: "local", createdAt: Date(), scheduledAt: nil,
+            startedAt: nil, finishedAt: nil, summary: nil, resultJSON: nil
+        )]
 
-        XCTAssertEqual(runtime.plugins.map(\.id), ["hello-check"])
+        XCTAssertTrue(runtime.isNativeBusy(.homebrewUpdate))
+        XCTAssertTrue(runtime.isNativeBusy(.homebrewInstall(packages: ["smartmontools"])))
+        XCTAssertFalse(runtime.isNativeBusy(.requestNotificationAuthorization))
+        await runtime.shutdown()
+    }
+
+    @MainActor
+    func testRuntimeDiscoversBundledHelloPlugin() async throws {
+        let runtime = HubRuntime(storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+
+        XCTAssertEqual(runtime.plugins.map(\.id), ["hello-check", "monitor", "volume-health", "watcher"])
+        await runtime.shutdown()
+    }
+
+    @MainActor
+    func testBundledPluginSurvivesAppBuildDirectoryChange() async throws {
+        let storage = try temporaryStorage()
+        let store = try PersistenceStore(url: storage.appendingPathComponent("KiwiOS.sqlite"))
+        try await store.upsertPlugin(PluginRecord(id: "monitor", name: "Monitor", version: "0.1.0",
+            sourceRepository: "/tmp/old-build/KiwiOS.app/Contents/Resources/plugins/monitor",
+            sourceCommit: nil, manifestDigest: "old", contentDigest: "old", enabled: false,
+            lifecycleState: PluginLifecycle.disabled.rawValue, updatedAt: Date()))
+
+        let runtime = HubRuntime(storageRoot: storage)
+        await runtime.waitUntilReady()
+
+        XCTAssertNotEqual(runtime.plugins.first(where: { $0.id == "monitor" })?.lifecycle, .error)
+        let migrated = try await store.plugin(id: "monitor")
+        XCTAssertEqual(migrated?.sourceRepository, "kiwios-bundled:monitor")
+        await runtime.shutdown()
+    }
+
+    func testMonitorAcceptsAppleSiliconSmartctlIOServiceDevices() throws {
+        let tools = try temporaryStorage()
+        try makeExecutable(at: tools.appendingPathComponent("smartctl"), contents: """
+        #!/bin/sh
+        if [ "$1" = "--scan" ]; then
+          echo 'IOService:/AppleARMPE/example/AppleNVMeController/NS_01@1 -d nvme # NVMe device'
+        else
+          echo '{"temperature":{"current":42}}'
+        fi
+        """)
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("plugins/monitor/monitor.sh")
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path, "drive-temperatures"]
+        process.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+
+        let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertTrue(result.contains("Drive temperatures read successfully"))
+        XCTAssertTrue(result.contains("\"temperature-c\":42"))
+    }
+
+    func testVolumeHealthTableRunsWithSystemAwk() throws {
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("plugins/volume-health/volume-health.sh")
+        let process = Process()
+        let output = Pipe()
+        let errors = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path, "table"]
+        process.standardOutput = output
+        process.standardError = errors
+        try process.run()
+        process.waitUntilExit()
+
+        let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let error = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, error)
+        XCTAssertTrue(result.contains("\"columns\""))
+        XCTAssertTrue(result.contains("\"rows\""))
+        XCTAssertFalse(result.contains("\"t\":\"log\""))
+        XCTAssertFalse(result.contains("\"mount\":\"/dev\""))
+        XCTAssertFalse(result.contains("CoreSimulator"))
+        XCTAssertFalse(result.contains("cryptex"))
+    }
+
+    func testCompletedJobsDoNotRemainInRuntimeSnapshot() async throws {
+        let storage = try temporaryStorage()
+        let store = try PersistenceStore(url: storage.appendingPathComponent("KiwiOS.sqlite"))
+        let queue = JobQueue(store: store) { _ in
+            return JobExecutionResult(status: .succeeded, summary: "Done")
+        }
+        try await queue.start()
+
+        let check = JobRequest(pluginID: "example", contributionID: "health", kind: .check,
+            requestedBy: "scheduler")
+        _ = try await queue.submit(check)
+        _ = await queue.waitForCompletion(check.id)
+        let afterCheck = try await store.runtimeSnapshot()
+        XCTAssertTrue(afterCheck.jobs.isEmpty)
+        XCTAssertEqual(afterCheck.latestResults.map(\.contributionID), ["health"])
+
+        let action = JobRequest(pluginID: "example", contributionID: "repair", kind: .action,
+            requestedBy: "local")
+        _ = try await queue.submit(action)
+        _ = await queue.waitForCompletion(action.id)
+        let afterAction = try await store.runtimeSnapshot()
+        XCTAssertTrue(afterAction.jobs.isEmpty)
+        XCTAssertEqual(Set(afterAction.latestResults.map(\.contributionID)), Set(["health", "repair"]))
+        await queue.shutdown()
     }
 
     func testLoadsHelloManifestShape() throws {
@@ -276,8 +390,10 @@ final class RuntimeTests: XCTestCase {
         """)
         let runtime = HubRuntime(
             pluginRoot: root,
-            runner: CommandRunner(timeout: 2, pluginDataRoot: root.appendingPathComponent("PluginData"))
+            runner: CommandRunner(timeout: 2),
+            storageRoot: try temporaryStorage()
         )
+        try await enable("single-flight", in: runtime)
 
         let first = Task { await runtime.runAction(pluginID: "single-flight", actionID: "run") }
         await Task.yield()
@@ -287,6 +403,7 @@ final class RuntimeTests: XCTestCase {
 
         let runs = try String(contentsOf: root.appendingPathComponent("runs.txt"), encoding: .utf8)
         XCTAssertEqual(runs.split(whereSeparator: \.isNewline).count, 1)
+        await runtime.shutdown()
     }
 
     @MainActor
@@ -309,13 +426,17 @@ final class RuntimeTests: XCTestCase {
         """)
         let runtime = HubRuntime(
             pluginRoot: root,
-            runner: CommandRunner(timeout: 2, pluginDataRoot: root.appendingPathComponent("PluginData"))
+            runner: CommandRunner(timeout: 2),
+            storageRoot: try temporaryStorage()
         )
+        try await enable("warning", in: runtime)
 
         await runtime.runCheck(pluginID: "warning", checkID: "check")
+        await waitForTerminalState(in: runtime)
 
-        XCTAssertEqual(runtime.plugins.first?.status, .warn)
+        XCTAssertEqual(runtime.plugins.first?.results["checks.check"]?.outcome, .warning)
         XCTAssertTrue(runtime.plugins.first?.message.hasPrefix("Protocol warning:") == true)
+        await runtime.shutdown()
     }
 
     @MainActor
@@ -339,13 +460,50 @@ final class RuntimeTests: XCTestCase {
         """)
         let runtime = HubRuntime(
             pluginRoot: root,
-            runner: CommandRunner(pluginDataRoot: root.appendingPathComponent("PluginData"))
+            runner: CommandRunner(),
+            storageRoot: try temporaryStorage()
         )
+        try await enable("failed-exit", in: runtime)
 
         await runtime.runCheck(pluginID: "failed-exit", checkID: "check")
+        await waitForTerminalState(in: runtime)
 
-        XCTAssertEqual(runtime.plugins.first?.status, .error)
+        XCTAssertEqual(runtime.plugins.first?.results["checks.check"]?.outcome, .failed)
         XCTAssertEqual(runtime.plugins.first?.message, "Exited 2")
+        await runtime.shutdown()
+    }
+
+    @MainActor
+    func testConfirmedActionCannotRunBeforeEnableOrBeforeConfirmation() async throws {
+        let root = try temporaryPlugin(manifest: """
+        id = "confirmed"
+        name = "Confirmed"
+        version = "1.0.0"
+        kiwios_api = "1"
+        license = "MIT"
+
+        [[actions]]
+        id = "run"
+        label = "Run"
+        confirm = true
+        command = ["./run.sh"]
+        """)
+        try makeExecutable(at: root.appendingPathComponent("run.sh"), contents: """
+        #!/bin/sh
+        touch executed
+        """)
+        let executed = root.appendingPathComponent("executed")
+        let runtime = HubRuntime(pluginRoot: root, storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+
+        await runtime.runAction(pluginID: "confirmed", actionID: "run")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: executed.path))
+
+        try await enable("confirmed", in: runtime)
+        await runtime.runAction(pluginID: "confirmed", actionID: "run")
+        XCTAssertNotNil(runtime.pendingConfirmation)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: executed.path))
+        await runtime.shutdown()
     }
 
     private func temporaryPlugin(manifest: String) throws -> URL {
@@ -357,8 +515,117 @@ final class RuntimeTests: XCTestCase {
         return root
     }
 
+    private func temporaryStorage() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiwiOSTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
+    }
+
+    @MainActor
+    private func enable(_ pluginID: String, in runtime: HubRuntime) async throws {
+        await runtime.waitUntilReady()
+        await runtime.requestEnable(pluginID: pluginID)
+        let review = try XCTUnwrap(runtime.pendingReview, runtime.operationError ?? runtime.discoveryError ?? runtime.plugins.map(\.message).joined(separator: "; "))
+        await runtime.approvePlugin(review)
+        XCTAssertEqual(runtime.plugins.first(where: { $0.id == pluginID })?.lifecycle, .active)
+    }
+
+    @MainActor
+    private func waitForTerminalState(in runtime: HubRuntime) async {
+        let deadline = Date().addingTimeInterval(2)
+        while runtime.plugins.first?.results.isEmpty == true {
+            guard Date() < deadline else { return }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     private func makeExecutable(at url: URL, contents: String) throws {
         try Data(contents.utf8).write(to: url)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+}
+
+final class TailscaleServiceTests: XCTestCase {
+    func testReadinessDistinguishesLoginAndHTTPSPrerequisites() async {
+        let loggedOut = FakeTailscaleBackend(backendState: "NeedsLogin")
+        let loggedOutService = TailscaleService(executable: URL(fileURLWithPath: "/bin/sh")) {
+            _, arguments in try await loggedOut.run(arguments)
+        }
+        let loggedOutState = await loggedOutService.inspect()
+        XCTAssertEqual(loggedOutState.unavailability, .loggedOut)
+
+        let noHTTPS = FakeTailscaleBackend(certDomains: [])
+        let noHTTPSService = TailscaleService(executable: URL(fileURLWithPath: "/bin/sh")) {
+            _, arguments in try await noHTTPS.run(arguments)
+        }
+        let noHTTPSState = await noHTTPSService.inspect()
+        XCTAssertEqual(noHTTPSState.unavailability, .httpsUnavailable)
+    }
+
+    func testExactManagedServeLifecycle() async throws {
+        let backend = FakeTailscaleBackend()
+        let service = TailscaleService(executable: URL(fileURLWithPath: "/bin/sh")) {
+            _, arguments in try await backend.run(arguments)
+        }
+
+        let plan = try await service.prepare()
+        let trust = try await service.start(plan: plan)
+        let valid = try await service.validate(trust)
+        XCTAssertTrue(valid)
+        let managedState = await service.inspect()
+        XCTAssertEqual(managedState.status, .managed(origin: trust.origin))
+
+        try await service.stop()
+        let availableState = await service.inspect()
+        let mutationCount = await backend.mutationCount
+        XCTAssertEqual(availableState.status, .available(origin: trust.origin))
+        XCTAssertEqual(mutationCount, 2)
+    }
+}
+
+private actor FakeTailscaleBackend {
+    private let backendState: String
+    private let certDomains: [String]
+    private var configured = false
+    private(set) var mutationCount = 0
+
+    init(backendState: String = "Running", certDomains: [String] = ["kiwi.example.ts.net"]) {
+        self.backendState = backendState
+        self.certDomains = certDomains
+    }
+
+    func run(_ arguments: [String]) throws -> Data {
+        if arguments == ["status", "--json"] {
+            return try JSONSerialization.data(withJSONObject: [
+                "BackendState": backendState,
+                "CertDomains": certDomains,
+                "Self": [
+                    "DNSName": "kiwi.example.ts.net.",
+                ],
+            ])
+        }
+        if arguments == ["serve", "status", "--json"] {
+            return try JSONSerialization.data(withJSONObject: configured ? [
+                "TCP": ["443": ["HTTPS": true]],
+                "Web": [
+                    "kiwi.example.ts.net:443": [
+                        "Handlers": ["/": ["Proxy": "http://127.0.0.1:31928"]],
+                    ],
+                ],
+            ] : [:])
+        }
+        if arguments == ["serve", "--bg", "--https=443", "http://127.0.0.1:31928"] {
+            configured = true
+            mutationCount += 1
+            return Data()
+        }
+        if arguments == ["serve", "--https=443", "off"] {
+            configured = false
+            mutationCount += 1
+            return Data()
+        }
+        throw TailscaleServiceError.commandFailed("Unexpected test command: \(arguments)")
     }
 }

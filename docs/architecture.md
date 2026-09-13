@@ -2,27 +2,33 @@
 
 KiwiOS is an after-login control plane for one Mac. It is a signed macOS app, not an operating system, boot daemon, container runtime, or multi-host orchestrator.
 
-The README states what exists today. Unimplemented components below are target boundaries, not claims about the current build.
+The implemented surface runs in the owning user's login session and can publish one optional tailnet UI:
 
 ```text
-phone / laptop              local Mac
-      |                          |
-Tailscale Serve HTTPS        native UI
-      |                          |
-      `----------> KiwiOS.app <-'       one Aqua user agent
-      |- HTTP + PWA              one UI on every device
-      |- plugin runtime          validate, enable, execute
-      |- watcher + jobs          schedule, supervise, log, cancel
-      |- native capabilities     host operations plugins may require
-      |- SQLite + files          state, audit, plugin data
-      `- Keychain                named secrets
+native macOS UI
+      |
+ KiwiOS.app                    one Aqua user application
+      |- discovery + policy    validate, fingerprint, approve, enable
+      |- checks + job queue    observe, schedule, lock, supervise, cancel
+      |- plugins + tools       host checks and confirmed operations
+      |- Doctor                prompt-free host and plugin checks
+      |- SQLite WAL + files    state, audit, results, plugin data, logs
+      `- Keychain              named and write-only configuration secrets
               |
-              `- trusted plugin commands
+              `- approved trusted plugin commands
+
+tailnet browser
+      |
+Tailscale Serve                verified identity, HTTPS origin
+      |
+127.0.0.1 KiwiOS backend       session, CSRF, and request replay checks
 ```
+
+The loopback HTTP server, tailnet PWA, and exact-revision repository installation are implemented in the working tree. Their Xcode 27 and signed-app release gates remain deferred. MCP supervision is outside the current implementation.
 
 ## Availability boundary
 
-KiwiOS starts as the owning user's LaunchAgent and runs in that user's Aqua session. It is available only after that user logs in. After a cold FileVault restart, somebody must unlock the Mac before KiwiOS, its PWA, checks, and jobs can run. Planned restarts may use `fdesetup authrestart` when the host is eligible.
+KiwiOS runs in the owning user's Aqua session. The local UI can register or unregister the main app as a login item through `SMAppService`, and Doctor reports whether registration is enabled, blocked on approval, missing, or unknown. KiwiOS is available only after that user logs in. After a cold FileVault restart, somebody must unlock the Mac before KiwiOS, checks, and jobs can run. Remote service preserves this boundary; privileged restart support is not implemented.
 
 This boundary is deliberate: GUI applications, TCC grants, Keychain access, and developer tools belong to the Aqua user. KiwiOS does not pretend to be a pre-login or highly available service.
 
@@ -31,7 +37,7 @@ This boundary is deliberate: GUI applications, TCC grants, Keychain access, and 
 There are two versioned public contracts:
 
 1. `plugin.toml`, selected by `kiwios_api = "1"`, declares metadata, requirements, disclosed permissions, commands, and UI descriptors.
-2. `kiwios.watch/1` is JSON Lines emitted by checks, actions, and jobs.
+2. `kiwios.watch/1` is the shared JSON Lines event protocol emitted by checks and actions.
 
 KiwiOS executes declared argv; it never imports plugin code. Plugin commands may be written in any language available on the Mac. Plugin-to-plugin dependencies are presence/version gates only in API 1, not an IPC mechanism.
 
@@ -39,7 +45,7 @@ KiwiOS executes declared argv; it never imports plugin code. Plugin commands may
 
 Plugins are trusted code running as the KiwiOS user. The app is intentionally not App Sandbox-enabled, so a plugin process can exercise that user's ambient access. Manifest permissions disclose intent and gate capabilities brokered by KiwiOS; they are not a sandbox for arbitrary child-process behavior.
 
-Unreviewed GitHub-topic plugins and locally added folders require explicit trust. The curated catalog records reviewed repository commits, but is not a security guarantee. See [permissions.md](permissions.md) and [marketplace.md](marketplace.md).
+Bundled plugins and plugins from the selected development directory require explicit local approval before execution. Approval records the canonical source path, manifest digest, full content digest, and disclosure digest. KiwiOS revalidates the source and digest immediately before launch and disables changed content. Installed plugins bind approval to the canonical repository and exact commit as well as manifest/content digests. The bundled curated catalog is present but empty. See [permissions.md](permissions.md) and [marketplace.md](marketplace.md).
 
 ## Native capabilities
 
@@ -49,13 +55,11 @@ Plugins may require versioned native capabilities. In API 1 a dependency means â
 |---|---|
 | `native.jobs` | queue, lock, log, cancel |
 | `native.watcher` | scheduled checks and typed run results |
-| `native.monitor` | CPU, memory, uptime, thermal and disk status |
-| `native.processes` | process and Aqua-app status/actions |
-| `native.launchd` | user/system service status/actions |
-| `native.volumes` | mounted volumes and free space |
+| `native.processes` | regular Aqua-app status and guarded termination |
+| `native.launchd` | current-user LaunchAgent status and attended restart |
 | `native.network` | interfaces and listening ports |
-| `native.power` | session, sleep, FileVault and planned restart checks |
-| `native.brew` | formula and cask status/actions |
+| `native.power` | low-power and FileVault status; privileged restart remains unsupported |
+| `native.brew` | formula and cask status plus attended update/upgrade |
 | `native.tailscale` | status, identity and the single Serve configuration |
 | `native.ssh` | named peers only |
 | `native.auth` | Serve identity, origin and CSRF validation |
@@ -67,34 +71,50 @@ Plugins may require versioned native capabilities. In API 1 a dependency means â
 
 Capabilities version independently. A breaking behavior change increments that capability's integer version.
 
+The current runtime advertises `native.jobs`, `native.watcher`, `native.secrets`, `native.processes`, `native.launchd`, `native.power`, `native.brew`, `native.ssh`, and `native.notify`, alongside the implemented remote capabilities. `native.network`, `native.update`, and `native.mcp` remain future boundaries.
+
+Tools shows regular applications, at most 50 owned plists from `~/Library/LaunchAgents`, Homebrew status from a fixed supported executable, FileVault and low-power state, named SSH peers, and notification authorization. The bundled optional `monitor` plugin reports CPU, memory, thermal pressure, and SMART drive temperatures; `volume-health` is an additional generic consumer of the plugin UI kinds. Plugins declare required Homebrew core formulae. KiwiOS reports their installed state, can install missing formulae through a separately confirmed local job, and records only those installs for ownership-aware cleanup when a plugin is removed.
+
+Native actions use the same durable job queue as plugin actions. A queued operation is revalidated immediately before execution. Process termination is limited to the current user's non-Apple regular applications installed under `/Applications` or `~/Applications`, and PID, start time, executable path, display name, and bundle identity must still match. LaunchAgent and Homebrew mutations require attended setup. SSH jobs store and resolve only a configured peer name, then run with batch mode, strict host-key checking, one connection attempt, and a bounded timeout. Notification authorization is requested only during attended setup; delivery requires an already authorized local outbox. KiwiOS has no privileged restart helper and does not invoke `sudo`.
+
 ## Plugin discovery and storage
 
-KiwiOS reads plugins from three explicit sources:
+KiwiOS currently reads plugins from three explicit sources:
 
 1. bundled plugins shipped in the app;
-2. installed, exact-revision plugin snapshots under Application Support;
-3. an optional development directory selected in Settings.
+2. an optional development directory selected in Settings;
+3. installed snapshots selected by an approved exact-commit database record.
 
-Duplicate plugin IDs are errors. KiwiOS never scans arbitrary folders and never silently chooses one duplicate over another.
+Invalid candidates are reported individually while healthy plugins remain available. Every duplicate-ID or source-conflict contender is excluded. Duplicate plugin IDs are errors. KiwiOS never scans arbitrary folders and never silently chooses one duplicate over another.
 
 ```text
 ~/Library/Application Support/KiwiOS/
-  config.toml
   KiwiOS.sqlite
-  InstalledPlugins/<id>/<commit>/
+  KiwiOS.sqlite-wal             while the database is open
+  KiwiOS.sqlite-shm             while the database is open
   PluginData/<id>/
-  MCP/<id>/
-  Logs/
+    config.json                 derived public config passed to the plugin
+  InstalledPlugins/<id>/<commit>/   approved immutable source snapshots
 ```
 
-KiwiOS never intentionally edits an installed plugin snapshot. Before launch it verifies the approved source, commit, manifest, and content digest and disables a changed snapshot. This is tamper detection, not containment: trusted code running as the same user can modify user-owned files. Config and data survive a code update. Secrets live in Keychain, not these files. Uninstall asks whether to retain or remove `PluginData/<id>`.
+SQLite stores plugin records and state, digest-bound approvals, user-started action metadata and audit entries, latest typed results, public configuration, home layout, setup/remote policy mode, and the selected development directory. Routine checks retain only their latest typed result, and no execution creates a separate log file. `config.json` is atomically derived from public configuration immediately before execution; write-only values and named secrets live in Keychain.
+
+Before launch KiwiOS verifies the approved source path, manifest, and content digest and disables changed source. This is tamper detection, not containment: trusted code running as the same user can modify user-owned files. Installed snapshots under `InstalledPlugins/` remain bound to their approved Git revision. Reload and disable preserve those recorded digests even if files change. Remove deletes all KiwiOS-owned content for that plugin; bundled and development source folders remain at their original owner and become available to Add again.
 
 ## UI and network
 
-KiwiOS owns navigation, layout, confirmation, accessibility, and rendering. Plugins contribute typed descriptors and JSON data; they cannot ship HTML, CSS, JavaScript, or iframes. The macOS window and remote PWA use the same information architecture. See [ui.md](ui.md).
+KiwiOS owns navigation, layout, confirmation, accessibility, and rendering. Plugins contribute typed descriptors and JSON data; they cannot ship HTML, CSS, JavaScript, or iframes. The remote PWA uses the same information architecture as the macOS window. See [ui.md](ui.md).
 
-KiwiOS owns one loopback HTTP listener used only as the backend for one optional tailnet-only Tailscale Serve origin. The native UI calls the app directly rather than treating loopback HTTP as an authenticated browser endpoint. Remote mutation requires Serve-provided human identity, same-origin and CSRF checks; missing identity and tagged-node requests fail closed. Plugins do not bind public listeners or configure Serve. Tailscale Funnel is unsupported. A malicious same-user process spoofing the loopback backend remains outside the documented v1 boundary.
+The native UI calls the runtime directly. The remote surface uses one fixed loopback HTTP listener behind one KiwiOS-owned, tailnet-only Tailscale Serve origin. It requires Serve-provided human identity plus exact host/origin, session, CSRF, replay, content-type, size, and rate checks for remote mutation; missing identity and tagged-node requests fail closed. Native host actions are not exposed by the current remote mutation contract. Plugins do not bind public listeners or configure Serve. Tailscale Funnel remains unsupported.
 
 ## Deliberate non-goals
 
 No Docker runtime, plugin webviews, event bus, root daemon, multi-user roles, public marketplace, automatic plugin updates, or language SDK in API 1. Add an SDK only after multiple plugins duplicate a stable helper; add a brokered plugin API only after a real integration needs one.
+
+## State and implementation boundaries
+
+`HubRuntime` remains the single policy and admission facade. Native and remote presentation values are grouped in `NativeToolsState` and `RemoteAccessState`; `NativeCapabilities`, `RemoteServer`, `TailscaleService`, `JobQueue`, and `PersistenceStore` retain their existing concrete service ownership. Listener termination is delivered directly to the hub rather than polled by a second liveness loop.
+
+`ProcessTransport` shares stream draining, redaction, capture bounds, timeout arbitration, and termination handling. Callers still choose their fixed executable/environment, output-overflow policy, and process-group grace period. User-started action logs receive the complete redacted stream up to their independent file limit. Git rejects overflow; native and Tailscale adapters retain their own error behavior.
+
+Presentation polling reads jobs and latest contribution results from one SQLite snapshot and publishes only changed values. Audit records remain internal. Per-plugin summaries come from durable contribution results, independently of the global recent-job limit. Native screen types and pure stat/table data parsing live in separate files. No extra package or dependency layer was introduced.

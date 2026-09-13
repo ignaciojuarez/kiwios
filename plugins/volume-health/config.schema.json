@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "warning_used_percent": {
+      "type": "integer",
+      "title": "Warn at used capacity",
+      "description": "Mark a filesystem as needing attention when its used capacity reaches this percentage.",
+      "enum": [80, 85, 90, 95],
+      "default": 90
+    }
+  }
+}

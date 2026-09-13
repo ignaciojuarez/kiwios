@@ -1,0 +1,29 @@
+id = "watcher"
+name = "Watcher"
+version = "0.1.0"
+kiwios_api = "1"
+license = "MIT"
+brew = []
+
+[depends]
+"native.watcher" = "1"
+
+[permissions]
+
+[[ui.pages]]
+id = "sessions"
+title = "Watcher"
+kind = "watchers"
+source = "watchers"
+
+[[ui.sidebar]]
+id = "watcher"
+label = "Watcher"
+page = "sessions"
+
+[[ui.widgets]]
+id = "sessions"
+title = "Watcher"
+kind = "watchers"
+source = "watchers"
+size = "2x1"
