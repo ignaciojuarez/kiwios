@@ -1,0 +1,78 @@
+id = "author.sample"
+name = "Sample Plugin"
+version = "0.1.0"
+kiwios_api = "1"
+license = "MIT"
+brew = []
+
+[config]
+schema = "config.schema.json"
+
+[[checks]]
+id = "summary"
+label = "Sample status"
+command = ["./plugin.sh", "summary"]
+every = "5m"
+timeout = "10s"
+
+[[checks]]
+id = "items"
+label = "Sample items"
+command = ["./plugin.sh", "items"]
+timeout = "10s"
+
+[[actions]]
+id = "refresh"
+label = "Refresh sample data"
+confirm = true
+command = ["./plugin.sh", "refresh"]
+timeout = "30s"
+lock = "refresh"
+
+[[ui.pages]]
+id = "status"
+title = "Status"
+kind = "stat"
+source = "checks.summary"
+
+[[ui.pages]]
+id = "checks"
+title = "Checks"
+kind = "checks"
+source = "checks"
+
+[[ui.pages]]
+id = "items"
+title = "Items"
+kind = "table"
+source = "checks.items"
+
+[[ui.pages]]
+id = "actions"
+title = "Actions"
+kind = "actions"
+source = "actions"
+
+[[ui.pages]]
+id = "activity"
+title = "Activity"
+kind = "log"
+source = "actions.refresh"
+
+[[ui.pages]]
+id = "settings"
+title = "Settings"
+kind = "form"
+source = "config"
+
+[[ui.sidebar]]
+id = "sample"
+label = "Sample"
+page = "status"
+
+[[ui.widgets]]
+id = "summary"
+title = "Sample Status"
+kind = "stat"
+source = "checks.summary"
+size = "1x1"

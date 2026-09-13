@@ -26,7 +26,7 @@ The open-source path is part of the product: a stranger must be able to clone, b
 - A clean clone builds and tests from documented commands.
 - The validator gives actionable errors without executing plugin code.
 - A failed, noisy, hung, or malformed plugin cannot freeze the app or hide its failure.
-- Local recovery works when Tailscale, a plugin, or the database's optional log files fail.
+- Local recovery works when Tailscale, a plugin, or the database fails.
 - Remote mutation is attributable to a verified tailnet identity and protected from cross-origin requests.
 - Installation and updates use immutable revisions, show disclosure diffs, and never run automatically.
 - The example and first real plugins prove the public contracts without private scripts.

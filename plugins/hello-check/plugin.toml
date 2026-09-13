@@ -3,6 +3,7 @@ name = "Hello"
 version = "0.1.0"
 kiwios_api = "1"
 license = "MIT"
+brew = []
 
 [[checks]]
 id = "hello"

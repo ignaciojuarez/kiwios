@@ -10,9 +10,14 @@ struct PluginManifest: Decodable, Equatable, Sendable {
     let checks: [PluginCheck]
     let actions: [PluginAction]
     let ui: PluginUI
+    let depends: [String: String]
+    let brew: [String]
+    let permissions: PluginPermissions
+    let config: PluginConfig?
+    let watch: PluginWatch?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, name, version, license, checks, actions, ui
+        case id, name, version, license, checks, actions, ui, depends, brew, permissions, config, watch
         case kiwiosAPI = "kiwios_api"
     }
 
@@ -27,6 +32,27 @@ struct PluginManifest: Decodable, Equatable, Sendable {
         checks = try container.decodeIfPresent([PluginCheck].self, forKey: .checks) ?? []
         actions = try container.decodeIfPresent([PluginAction].self, forKey: .actions) ?? []
         ui = try container.decodeIfPresent(PluginUI.self, forKey: .ui) ?? PluginUI()
+        depends = try container.decodeIfPresent([String: String].self, forKey: .depends) ?? [:]
+        brew = try container.decodeIfPresent([String].self, forKey: .brew) ?? []
+        permissions = try container.decodeIfPresent(PluginPermissions.self, forKey: .permissions) ?? PluginPermissions()
+        config = try container.decodeIfPresent(PluginConfig.self, forKey: .config)
+        watch = try container.decodeIfPresent(PluginWatch.self, forKey: .watch)
+    }
+}
+
+struct PluginWatch: Decodable, Equatable, Sendable {
+    let status: String
+    let start: String?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case status, start
+    }
+
+    init(from decoder: Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        start = try container.decodeIfPresent(String.self, forKey: .start)
     }
 }
 
@@ -192,7 +218,7 @@ struct PluginWidget: Decodable, Equatable, Identifiable, Sendable {
 }
 
 enum PluginUIKind: String, Equatable, Sendable {
-    case stat, checks, actions, table, log, form
+    case stat, checks, actions, table, log, form, watchers
 }
 
 extension PluginUIKind: Decodable {
@@ -207,6 +233,20 @@ extension PluginUIKind: Decodable {
 struct LoadedPlugin: Sendable {
     let manifest: PluginManifest
     let rootURL: URL
+    let configSchema: PluginConfigSchema?
+    let source: PluginSource
+
+    init(
+        manifest: PluginManifest,
+        rootURL: URL,
+        configSchema: PluginConfigSchema? = nil,
+        source: PluginSource = .direct
+    ) {
+        self.manifest = manifest
+        self.rootURL = rootURL
+        self.configSchema = configSchema
+        self.source = source
+    }
 }
 
 enum PluginLoadError: LocalizedError, Equatable {
@@ -220,6 +260,7 @@ enum PluginLoadError: LocalizedError, Equatable {
     case duplicateCommandID(String)
     case duplicateDescriptorID(String)
     case emptyCommand(String)
+    case invalidCommandArgument(String)
     case invalidCommandPath(String)
     case executableMissingOrNotExecutable(String)
     case invalidDuration(String)
@@ -228,6 +269,19 @@ enum PluginLoadError: LocalizedError, Equatable {
     case invalidSource(String)
     case invalidPageReference(String)
     case invalidWidgetSize(String)
+    case invalidWatchReference(String)
+    case invalidDependency(String)
+    case missingDependency(plugin: String, dependency: String)
+    case incompatibleDependency(plugin: String, dependency: String, required: String, actual: String)
+    case dependencyCycle([String])
+    case invalidPermission(field: String, value: String)
+    case duplicatePermission(field: String, value: String)
+    case invalidConfigPath(String)
+    case configSchemaMissing(String)
+    case configSchemaTooLarge
+    case invalidConfigSchema(String)
+    case duplicatePluginID(String)
+    case sourceConflict(String)
 
     var errorDescription: String? {
         switch self {
@@ -241,6 +295,7 @@ enum PluginLoadError: LocalizedError, Equatable {
         case .duplicateCommandID(let id): "Duplicate command id \(id)"
         case .duplicateDescriptorID(let id): "Duplicate UI descriptor id \(id)"
         case .emptyCommand(let id): "Command \(id) has no argv"
+        case .invalidCommandArgument(let id): "Command \(id) contains an invalid control character"
         case .invalidCommandPath(let id): "Command \(id) must be a bare executable or a ./ path inside the plugin"
         case .executableMissingOrNotExecutable(let id): "Command \(id) references a missing or non-executable local file"
         case .invalidDuration(let value): "Invalid duration \(value)"
@@ -249,6 +304,20 @@ enum PluginLoadError: LocalizedError, Equatable {
         case .invalidSource(let value): "Invalid UI source \(value)"
         case .invalidPageReference(let value): "Unknown UI page \(value)"
         case .invalidWidgetSize(let value): "Invalid widget size \(value)"
+        case .invalidWatchReference(let value): "Invalid watch reference \(value)"
+        case .invalidDependency(let value): "Invalid dependency declaration \(value)"
+        case .missingDependency(let plugin, let dependency): "Plugin \(plugin) is missing dependency \(dependency)"
+        case .incompatibleDependency(let plugin, let dependency, let required, let actual):
+            "Plugin \(plugin) requires \(dependency) \(required), found \(actual)"
+        case .dependencyCycle(let ids): "Plugin dependency cycle: \(ids.joined(separator: " -> "))"
+        case .invalidPermission(let field, let value): "Invalid permission \(field): \(value)"
+        case .duplicatePermission(let field, let value): "Duplicate permission \(field): \(value)"
+        case .invalidConfigPath(let value): "Invalid config schema path \(value)"
+        case .configSchemaMissing(let value): "Config schema is missing: \(value)"
+        case .configSchemaTooLarge: "Config schema exceeds 256 KB"
+        case .invalidConfigSchema(let reason): "Invalid config schema: \(reason)"
+        case .duplicatePluginID(let id): "Duplicate plugin id \(id)"
+        case .sourceConflict(let path): "Plugin source is selected more than once: \(path)"
         }
     }
 }
@@ -270,6 +339,9 @@ struct PluginLoader {
             throw PluginLoadError.invalidVersion(manifest.version)
         }
         try validateDisplayText(manifest)
+        try DependencyGraphValidator.validateDeclarations(manifest)
+        try validateBrewPackages(manifest.brew)
+        try manifest.permissions.validate(pluginID: manifest.id)
 
         try validateCommands(manifest.checks.map { ($0.id, $0.command) }, rootURL: rootURL)
         try validateCommands(manifest.actions.map { ($0.id, $0.command) }, rootURL: rootURL)
@@ -278,9 +350,11 @@ struct PluginLoader {
                 throw PluginLoadError.invalidLock(lock)
             }
         }
-        try validateUI(manifest)
+        let configSchema = try PluginConfigSchema.load(manifest.config, from: rootURL)
+        try validateUI(manifest, hasConfigSchema: configSchema != nil)
+        try validateWatch(manifest)
 
-        return LoadedPlugin(manifest: manifest, rootURL: rootURL)
+        return LoadedPlugin(manifest: manifest, rootURL: rootURL, configSchema: configSchema)
     }
 
     private func validateCommands(_ commands: [(id: String, argv: [String])], rootURL: URL) throws {
@@ -290,6 +364,13 @@ struct PluginLoader {
                 throw PluginLoadError.invalidContributionID(command.id)
             }
             guard !command.argv.isEmpty else { throw PluginLoadError.emptyCommand(command.id) }
+            guard !command.argv.contains(where: { argument in
+                argument.unicodeScalars.contains(where: { $0.value == 0 })
+            }), !command.argv[0].unicodeScalars.contains(where: {
+                CharacterSet.controlCharacters.contains($0)
+            }) else {
+                throw PluginLoadError.invalidCommandArgument(command.id)
+            }
             guard Self.isAllowedExecutable(command.argv[0]) else {
                 throw PluginLoadError.invalidCommandPath(command.id)
             }
@@ -312,6 +393,15 @@ struct PluginLoader {
         }
     }
 
+    private func validateBrewPackages(_ packages: [String]) throws {
+        guard Set(packages).count == packages.count,
+              packages.allSatisfy({
+                  $0.range(of: #"^[a-z0-9][a-z0-9@+._-]{0,159}$"#, options: .regularExpression) != nil
+              }) else {
+            throw PluginLoadError.invalidDependency("brew packages must be unique Homebrew core formula names")
+        }
+    }
+
     private func validateLocalExecutable(_ executable: String, id: String, rootURL: URL) throws {
         guard executable.hasPrefix("./") else { return }
         let root = rootURL.standardizedFileURL.resolvingSymlinksInPath()
@@ -329,7 +419,7 @@ struct PluginLoader {
         }
     }
 
-    private func validateUI(_ manifest: PluginManifest) throws {
+    private func validateUI(_ manifest: PluginManifest, hasConfigSchema: Bool) throws {
         try validateDescriptorIDs(manifest.ui.pages.map(\.id))
         try validateDescriptorIDs(manifest.ui.sidebar.map(\.id))
         try validateDescriptorIDs(manifest.ui.widgets.map(\.id))
@@ -346,9 +436,26 @@ struct PluginLoader {
         let actionIDs = Set(manifest.actions.map(\.id))
         for descriptor in manifest.ui.pages.map({ ($0.kind, $0.source) })
             + manifest.ui.widgets.map({ ($0.kind, $0.source) }) {
-            guard Self.isValidSource(descriptor.1, for: descriptor.0, checks: checkIDs, actions: actionIDs) else {
+            guard Self.isValidSource(
+                descriptor.1,
+                for: descriptor.0,
+                checks: checkIDs,
+                actions: actionIDs,
+                hasConfigSchema: hasConfigSchema
+            ) else {
                 throw PluginLoadError.invalidSource(descriptor.1)
             }
+        }
+    }
+
+    private func validateWatch(_ manifest: PluginManifest) throws {
+        guard let watch = manifest.watch else { return }
+        guard manifest.checks.contains(where: { $0.id == watch.status }) else {
+            throw PluginLoadError.invalidWatchReference("checks.\(watch.status)")
+        }
+        if let start = watch.start,
+           !manifest.actions.contains(where: { $0.id == start }) {
+            throw PluginLoadError.invalidWatchReference("actions.\(start)")
         }
     }
 
@@ -366,7 +473,8 @@ struct PluginLoader {
         _ source: String,
         for kind: PluginUIKind,
         checks: Set<String>,
-        actions: Set<String>
+        actions: Set<String>,
+        hasConfigSchema: Bool
     ) -> Bool {
         let components = source.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
         let exactCheck = components.count == 2 && components[0] == "checks" && checks.contains(components[1])
@@ -381,7 +489,9 @@ struct PluginLoader {
         case .log:
             return exactCheck || exactAction
         case .form:
-            return false // Config schemas are intentionally deferred until their validator exists.
+            return source == "config" && hasConfigSchema
+        case .watchers:
+            return source == "watchers"
         }
     }
 
@@ -394,16 +504,8 @@ struct PluginLoader {
             && (!value.contains("/") || value.hasPrefix("./"))
     }
 
-    private static func isSemanticVersion(_ value: String) -> Bool {
-        guard matches(value, #"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"#) else {
-            return false
-        }
-        let withoutBuild = value.split(separator: "+", maxSplits: 1)[0]
-        let parts = withoutBuild.split(separator: "-", maxSplits: 1)
-        guard parts.count == 2 else { return true }
-        return parts[1].split(separator: ".").allSatisfy { identifier in
-            !identifier.allSatisfy(\.isNumber) || identifier == "0" || identifier.first != "0"
-        }
+    static func isSemanticVersion(_ value: String) -> Bool {
+        SemanticVersion(value) != nil
     }
 
     private static func matches(_ value: String, _ pattern: String) -> Bool {
@@ -426,7 +528,7 @@ private struct AnyCodingKey: CodingKey {
     }
 }
 
-private extension Decoder {
+extension Decoder {
     func rejectUnknownKeys<Key>(_ keyType: Key.Type) throws
     where Key: CodingKey & CaseIterable {
         let raw = try container(keyedBy: AnyCodingKey.self)

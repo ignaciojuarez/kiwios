@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "title": "Sample settings",
+  "description": "Replace these fields with the settings your plugin needs.",
+  "properties": {
+    "display_name": {
+      "type": "string",
+      "title": "Display name",
+      "description": "A non-secret example string.",
+      "default": "Sample"
+    },
+    "warning_threshold": {
+      "type": "integer",
+      "title": "Warning threshold",
+      "default": 80
+    },
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "enum": ["standard", "compact"],
+      "default": "standard"
+    },
+    "enabled": {
+      "type": "boolean",
+      "title": "Enabled",
+      "default": true
+    }
+  }
+}

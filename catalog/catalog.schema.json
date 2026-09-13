@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kiwios.app/schemas/catalog-1.json",
+  "title": "KiwiOS curated plugin catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "plugins"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "plugins": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/plugin" }
+    }
+  },
+  "$defs": {
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "repository", "commit", "path", "version", "kiwios_api", "license"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" },
+        "name": { "type": "string", "pattern": ".*\\S.*" },
+        "repository": { "type": "string", "pattern": "^https://github\\.com/(?!\\.{1,2}/)[a-z0-9._-]+/(?!\\.{1,2}$)(?![a-z0-9._-]+\\.git$)[a-z0-9._-]+$" },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "path": { "type": "string", "pattern": "^(?:\\.|(?![~/])(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)(?!.*[\\u0000-\\u001F\\u007F])[^/]+(?:/[^/]+)*)$" },
+        "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
+        "kiwios_api": { "const": "1" },
+        "license": { "type": "string", "pattern": ".*\\S.*" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "plugins": [
+        {
+          "id": "example.plugin",
+          "name": "Example Plugin",
+          "repository": "https://github.com/example/kiwios-plugin",
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "path": ".",
+          "version": "1.2.0",
+          "kiwios_api": "1",
+          "license": "MIT"
+        }
+      ]
+    }
+  ]
+}

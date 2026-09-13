@@ -10,11 +10,13 @@ The manifest permission list is disclosure, not containment. KiwiOS shows it bef
 
 Treat enabling a plugin like running a downloaded shell script. Read its source or trust its maintainer and exact commit. The curated catalog improves reviewability but does not certify safety.
 
+Local approvals bind the selected directory, manifest digest, and content digest; installed approvals bind the canonical repository and exact commit as well. All source changes require a new review. The native approval sheet shows source, version, license, dependencies, declared permissions, and digests. Configuration is validated before launch; a plugin remains `needs-setup` until its configuration, requested secrets, and probed prerequisites are ready.
+
 ## 2. KiwiOS policy
 
 KiwiOS requires explicit approval before first enable and before activating an update that expands disclosed permissions. Revoking a brokered scope blocks that KiwiOS operation; disabling a plugin stops future launches and cancels its jobs.
 
-Destructive actions declare `confirm = true` and use the host confirmation dialog. Remote actions and results are audit-logged with the human identity supplied by KiwiOS-owned [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve). API 1 has one role: every verified human identity allowed by the operator's Tailscale policy is an administrator. KiwiOS does not add a second roles database. Requests with missing identity headers fail closed; tagged nodes do not supply a human identity and cannot perform remote mutations in API 1.
+Destructive actions declare `confirm = true` and use the host confirmation dialog. The local runtime binds a one-use confirmation to the plugin content, action, and job; it expires after 60 seconds and is checked again at execution. Checks and actions cannot enter the runner merely by calling a view handler. Remote actions and results are audit-logged with the human identity supplied by KiwiOS-owned [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve). API 1 has one role: every verified human identity allowed by the operator's Tailscale policy is an administrator. KiwiOS does not add a second roles database. Requests with missing identity headers fail closed; tagged nodes do not supply a human identity and cannot perform remote mutations in API 1.
 
 KiwiOS's loopback listener is exclusively a Serve backend, not an authenticated local-browser entry point. The native app uses an internal path. KiwiOS accepts identity headers only under this managed deployment model and also enforces origin and CSRF checks. Funnel, alternate reverse proxies, and direct LAN/public binding are unsupported. Same-user local process compromise is outside the v1 boundary, as stated in [SECURITY.md](../SECURITY.md).
 
@@ -26,10 +28,10 @@ TCC, Keychain prompts, Gatekeeper, Xcode license dialogs, sudo, and device trust
 
 ```toml
 [permissions]
-tcc = ["fda", "accessibility", "apple-events"]
+tcc = ["accessibility", "screen-recording"]
 ```
 
-API 1 recognizes `fda`, `accessibility`, `apple-events`, `developer-tools`, `screen-recording`, and `local-network`. A plugin may also need a Keychain item, Xcode first-launch/license acceptance, Gatekeeper approval, or external device trust; its checks must report those prerequisites.
+API 1 accepts `accessibility` and `screen-recording`, the grants KiwiOS can check without prompting. Unprobeable TCC grants are not supported manifest prerequisites in API 1. A plugin may also need a Keychain item, Xcode first-launch/license acceptance, Gatekeeper approval, or external device trust; its checks must report those prerequisites.
 
 KiwiOS never writes `TCC.db`, clicks a security dialog, stores a sudo password, or invokes a protected API merely to see whether it prompts.
 
@@ -40,9 +42,13 @@ KiwiOS never writes `TCC.db`, clicks a security dialog, stores a sudo password, 
 | Presence | attended Mac or Screen Sharing session | ordinary tailnet operation |
 | New TCC/Keychain/license dialog | allowed and guided | command blocked |
 | Plugin enable | review disclosure, then run doctor | only if doctor is already green |
-| Jobs | may wait for the operator | must fail closed instead of hanging |
+| Background operations | may wait for the operator | must fail closed instead of hanging |
 
 The native doctor checks the Aqua session, FileVault state, KiwiOS permissions, configured volumes/tools, plugin prerequisites, and known blocking dialogs. If KiwiOS lacks the access required to inspect a grant, its state is `unknown`, not `denied` or `granted`.
+
+The current native Doctor probes Aqua ownership, storage/database health, app signing, required host tools, FileVault, launch-at-login registration, Accessibility, and Screen Recording. KiwiOS does not substitute an unsafe operation for a missing preflight API. The app does not yet inspect arbitrary license, device-trust, or blocking application dialogs. Those prerequisites must be completed in an attended session. The remote HTTP surface reports blocked prerequisites and never opens these dialogs. See [remote.md](remote.md) for publication, sessions, and confirmation behavior.
+
+Native SSH inspection and actions use the owning user's OpenSSH configuration. That configuration is part of the attended local trust boundary and may run configured local, proxy, or known-host commands and may enable forwarding. KiwiOS does not expose native SSH operations through the remote mutation API. Operators should review their user SSH configuration before using a named peer; KiwiOS still supplies batch mode, strict host-key checking, one connection attempt, and bounded timeouts.
 
 ## Secrets and logs
 

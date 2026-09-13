@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="KiwiOS">
+  <rect width="512" height="512" rx="120" fill="#111612"/>
+  <circle cx="256" cy="256" r="172" fill="#a8d85d"/>
+  <circle cx="256" cy="256" r="124" fill="#d9f49e"/>
+  <circle cx="256" cy="256" r="34" fill="#edf5ee"/>
+  <g fill="#172018">
+    <ellipse cx="256" cy="112" rx="8" ry="22"/><ellipse cx="256" cy="400" rx="8" ry="22"/>
+    <ellipse cx="112" cy="256" rx="22" ry="8"/><ellipse cx="400" cy="256" rx="22" ry="8"/>
+    <ellipse cx="154" cy="154" rx="8" ry="22" transform="rotate(-45 154 154)"/>
+    <ellipse cx="358" cy="358" rx="8" ry="22" transform="rotate(-45 358 358)"/>
+    <ellipse cx="358" cy="154" rx="8" ry="22" transform="rotate(45 358 154)"/>
+    <ellipse cx="154" cy="358" rx="8" ry="22" transform="rotate(45 154 358)"/>
+  </g>
+</svg>

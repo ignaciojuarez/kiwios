@@ -13,6 +13,8 @@ Each phase ends in a working vertical slice. The API 1 plugin and watcher docume
 
 ## 1 — local plugin platform
 
+Implementation of 1A–1D is present in the working tree. Build/test execution and the manual macOS release gates are deferred until Xcode is installed; checked implementation items below do not claim those gates passed.
+
 ### Completed foundation
 
 - [x] Decode the core `kiwios_api = "1"` metadata, checks, and actions.
@@ -23,64 +25,77 @@ Each phase ends in a working vertical slice. The API 1 plugin and watcher docume
 ### 1A — contract-complete loading
 
 - [x] Strictly decode and validate the current manifest surface: metadata, checks, actions, durations, non-form UI descriptors and sources, and referenced local executables.
-- [ ] Define and validate required dependencies, disclosed permissions, and the supported config-schema subset.
-- [ ] Discover every bundled plugin and one explicitly selected development directory; reject duplicate IDs and source conflicts without executing plugin code.
+- [x] Define and validate required dependencies, disclosed permissions, and the supported config-schema subset.
+- [x] Discover every bundled plugin and one explicitly selected development directory; reject duplicate IDs and source conflicts without executing plugin code.
 
 Optional-dependency contribution behavior and supervised-child declarations are deferred until real consumers establish their requirements.
 
 ### 1B — typed run results
 
-- [ ] Retain typed Watcher state, progress, logs, protocol warnings, and terminal outcomes for each check and action.
-- [ ] Validate exact event, state, step, and log boundaries and honor distinct check/action timeout defaults and overrides.
-- [ ] Represent succeeded, warning, failed, timed-out, canceled, and interrupted runs separately.
+- [x] Retain typed Watcher state, progress, logs, protocol warnings, and terminal outcomes for each check and action.
+- [x] Validate exact event, state, step, and log boundaries and honor distinct check/action timeout defaults and overrides.
+- [x] Represent succeeded, warning, failed, timed-out, canceled, and interrupted runs separately.
 
 ### 1C — durable jobs and policy
 
-- [ ] Add one GRDB migration chain for plugin records, approvals, jobs, audit entries, latest results, config, and layout.
-- [ ] Route checks and actions through one queue with resource locks, scheduling, cancellation, bounded file logs, and restart recovery.
-- [ ] Centralize confirmation and authorization; implement enable/disable, disclosure approval, temporary secret delivery, and log redaction.
+- [x] Add one GRDB migration chain for plugin records, approvals, jobs, audit entries, latest results, config, and layout.
+- [x] Route checks and actions through one queue with resource locks, scheduling, cancellation, bounded file logs, and restart recovery.
+- [x] Centralize confirmation and authorization; implement enable/disable, disclosure approval, temporary secret delivery, and log redaction.
 
 ### 1D — host-owned UI and setup
 
-- [ ] Render all six API 1 kinds: `stat`, `checks`, `actions`, `table`, `log`, and `form`.
-- [ ] Add setup/remote mode and Doctor without prompting remotely.
-- [ ] Complete dependency, symlink-race, scheduling, persistence, authorization, accessibility, and recovery tests.
+- [x] Render all seven API 1 kinds: `stat`, `checks`, `actions`, `table`, `log`, `form`, and `watchers`.
+- [x] Add setup/remote mode and Doctor without prompting remotely.
+- [ ] Complete and run dependency, symlink-race, scheduling, persistence, authorization, accessibility, and recovery validation under Xcode 27. Regression sources cover manifest/config/dependency and watcher behavior; runtime fixtures now use explicit approval. Signed-app, VoiceOver, sleep/wake, permissions, and crash/recovery journeys remain release gates.
+
+Current setup limits are explicit: API 1 accepts Accessibility and Screen Recording because they have prompt-free probes; unprobeable TCC prerequisites are rejected by manifest validation. Repository installation and exact Git revisions are implemented in phase 4; local approvals bind the selected source directory and exact manifest/content digests.
 
 Exit: a technical user can clone, build, validate, explicitly enable `hello-check`, invoke it through the durable runtime, and understand every permission and failure state without Tailscale.
 
 ## 2 — remote UI
 
-- Add one embedded HTTP server and one responsive PWA renderer for the same UI kinds.
-- Publish only through KiwiOS-owned, tailnet-only Tailscale Serve.
-- Verify Tailscale identity, CSRF/origin handling, audit logs, and local recovery.
-- Exercise phone, desktop browser, sleep/wake, logout/login, and FileVault restart behavior.
+- [x] Add one embedded loopback HTTP server and a responsive PWA for all seven UI kinds.
+- [x] Implement explicit publication through KiwiOS-owned, tailnet-only Tailscale Serve, with ownership checks on startup and recovery.
+- [x] Implement identity-bound sessions, origin/CSRF checks, one-use confirmations, audit attribution, and replay protection.
+- [x] Add phone navigation, plugin-owned action state, Events, and Status & setup with Doctor findings.
+- [x] Disable mutations when disconnected, label old results, preserve focused configuration edits during polling, and keep secrets in attended setup.
+- [ ] Verify transport/security and exercise phone, desktop browser, sleep/wake, logout/login, and FileVault restart behavior after Xcode is ready.
 
-Exit: after login, a tailnet administrator can inspect status and run a confirmed action from a phone; before login, the product states that it is unavailable.
+Exit remains unverified: after login, a tailnet administrator can inspect status and run a confirmed action from a phone; before login, the product states that it is unavailable.
 
 ## 3 — useful native capabilities
 
-- Monitor CPU, memory, uptime, thermals, and volumes.
-- Add bounded process/launchd operations, Homebrew status/actions, named SSH peers, power checks, and notifications.
-- Keep privileged or GUI-prompting work behind Doctor and attended setup.
+- [x] Implement optional CPU, memory, thermal, and SMART drive-temperature checks as the bundled Monitor plugin; uptime is intentionally omitted.
+- [x] Implement bounded process controls, LaunchAgent status/restart, Homebrew status/actions, saved SSH peer probes, power checks, and notifications in Tools.
+- [x] Require attended setup for prompt-requiring operations and explicit native confirmation where applicable; privileged restart remains unsupported.
+- [x] Add a Home setup journey derived from Doctor, plugin enablement, launch-at-login, and actual remote availability.
+- [ ] Exercise native services and permission/lifecycle recovery on macOS after Xcode is ready.
 
-Add capabilities only alongside a real built-in or plugin consumer.
+Native actions currently run from the Mac UI. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
 
 ## 4 — discovery and explicit install
 
-- Add repository-plus-exact-SHA install and update.
-- Add in-app GitHub search for the `kiwios-plugin` topic, with cached/rate-limited results.
-- Launch the curated catalog repository and pull-request review policy.
-- Show source, commit, license, dependency, and disclosure diffs before trust.
+- [x] Implement repository-plus-exact-SHA staging, review, install/update, and complete KiwiOS-owned-content removal.
+- [x] Add in-app GitHub search for the `kiwios-plugin` topic with cached/rate-limited results.
+- [x] Show source, commit, license, dependencies, and disclosure changes before trust; bind activation to approved repository, commit, and digests.
+- [x] Prepare a strict bundled catalog format and pull-request review policy. The catalog deliberately contains no approved entries.
+- [x] Add a copyable plugin template and an app-based author-to-install walkthrough.
+- [ ] Publish and maintain the curated catalog repository, review real exact commits, and add approved entries.
+- [ ] Validate install/update interruption, incompatible config, source tampering, and removal/reinstall recovery after Xcode is ready.
 
-Exit: a stranger can author, validate, publish, discover, inspect, install, update, disable, and remove a plugin without an SDK or automatic code execution.
+No source repository was published or plugin installed during this implementation pass. The standalone validator CLI remains future work; local validation currently uses the app.
 
 ## 5 — first real plugins
 
-Build plugins driven by actual host needs. Use those implementations to test whether the manifest, six UI kinds, and process protocol are sufficient. Do not add plugin-to-plugin IPC or an SDK until repeated code demonstrates the missing stable interface.
+- [x] Add a generic volume-health plugin with a configurable threshold and actionable status.
+- [x] Use their contributions and the author template to exercise the standard data/action UI shapes in source.
+- [ ] Run them on representative macOS hosts and use that evidence to decide whether the draft contracts are sufficient.
 
-## 6 — MCP, if still needed
+Do not add plugin-to-plugin IPC or an SDK until repeated code demonstrates the missing stable interface.
 
-Add supervised local/remote MCP entries and a confirmed gateway only after the core process, permission, and HTTP paths are stable. See [mcp.md](mcp.md). MCP is not part of `kiwios_api = "1"`.
+## 6 — MCP, deferred
+
+MCP is explicitly excluded from the current work at the owner's request. Reconsider supervised MCP entries and a confirmed gateway only if a real need emerges after core process, permission, and HTTP paths are stable. See [mcp.md](mcp.md). MCP is not part of `kiwios_api = "1"`.
 
 ## Later, only with evidence
 
@@ -89,3 +104,7 @@ Additional roles, theme packs, richer charts, a sandboxed plugin runner, resumab
 ## Explicit non-goals
 
 Docker, arbitrary plugin HTML, public Funnel exposure, MDM, high availability, pre-login service, and a second native client shell.
+
+## Audit remediation — 2026-09-12
+
+The [codebase audit](audits/2026-09-12-codebase-audit.md) has an accompanying [implementation record](audits/2026-09-12-remediation.md) covering all 27 findings, recovery and policy decisions, and structural cleanup. Source changes do not complete the outstanding Xcode, signed-app, accessibility, browser, or crash/recovery gates. MCP remains deferred.

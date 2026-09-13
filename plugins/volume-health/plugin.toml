@@ -1,0 +1,70 @@
+id = "volume-health"
+name = "Volume Health"
+version = "0.1.0"
+kiwios_api = "1"
+license = "MIT"
+brew = []
+
+[config]
+schema = "config.schema.json"
+
+[permissions]
+exec = ["awk", "df", "plutil"]
+
+[[checks]]
+id = "root-space"
+label = "System volume free space"
+command = ["./volume-health.sh", "root"]
+every = "15m"
+timeout = "10s"
+
+[[checks]]
+id = "mounted-volumes"
+label = "Mounted volume capacity"
+command = ["./volume-health.sh", "table"]
+every = "30m"
+timeout = "15s"
+
+[[actions]]
+id = "inspect-volumes"
+label = "Inspect mounted volumes now"
+confirm = false
+command = ["./volume-health.sh", "table"]
+timeout = "15s"
+lock = "volume-read"
+
+[[ui.pages]]
+id = "overview"
+title = "Volume Health"
+kind = "checks"
+source = "checks"
+
+[[ui.pages]]
+id = "volumes"
+title = "Mounted Volumes"
+kind = "table"
+source = "checks.mounted-volumes"
+
+[[ui.pages]]
+id = "actions"
+title = "Refresh Volumes"
+kind = "actions"
+source = "actions"
+
+[[ui.pages]]
+id = "settings"
+title = "Volume Settings"
+kind = "form"
+source = "config"
+
+[[ui.sidebar]]
+id = "volume-health"
+label = "Volumes"
+page = "overview"
+
+[[ui.widgets]]
+id = "root-space"
+title = "System Volume"
+kind = "stat"
+source = "checks.root-space"
+size = "1x1"

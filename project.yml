@@ -1,5 +1,11 @@
 name: KiwiOS
 packages:
+  Hummingbird:
+    url: https://github.com/hummingbird-project/hummingbird.git
+    exactVersion: 2.26.0
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    exactVersion: 7.10.0
   Subprocess:
     url: https://github.com/swiftlang/swift-subprocess.git
     exactVersion: 1.0.0
@@ -23,10 +29,19 @@ targets:
     platform: macOS
     sources:
       - path: KiwiOS
-      - path: plugins/hello-check
+        excludes: [Web]
+      - path: KiwiOS/Web
+        type: folder
+        buildPhase: resources
+      - path: plugins
+        type: folder
+        buildPhase: resources
+      - path: catalog
         type: folder
         buildPhase: resources
     dependencies:
+      - package: Hummingbird
+      - package: GRDB
       - package: Subprocess
       - package: TOMLDecoder
     settings:
@@ -36,6 +51,7 @@ targets:
       INFOPLIST_KEY_CFBundleDisplayName: KiwiOS
       INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
       INFOPLIST_KEY_NSHighResolutionCapable: YES
+      INFOPLIST_KEY_NSRemovableVolumesUsageDescription: KiwiOS reads drive health and capacity for plugins you add.
       CODE_SIGN_STYLE: Automatic
       ENABLE_APP_SANDBOX: NO
       ENABLE_HARDENED_RUNTIME: YES

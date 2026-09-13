@@ -2,88 +2,22 @@ import Foundation
 import Subprocess
 import System
 
-enum WatchEventKind: String, Equatable, Sendable {
-    case log, progress, ok, warn, error, state
-}
-
-struct WatchEvent: Equatable, Sendable {
-    let kind: WatchEventKind
-    let message: String
-    let level: String?
-}
-
-struct WatchDecodeResult: Equatable, Sendable {
-    let events: [WatchEvent]
-    let hadProtocolWarning: Bool
-}
-
-struct WatchDecoder {
-    static let maximumEventLineBytes = 64 * 1024
-    static let maximumStateBytes = 48 * 1024
-
-    private struct WireEvent: Decodable {
-        let t: String?
-        let msg: String?
-        let lvl: String?
-    }
-
-    func decode(_ data: Data) -> WatchDecodeResult {
-        var events: [WatchEvent] = []
-        var hadProtocolWarning = false
-        for line in String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline).map(String.init) {
-            let decoded = decodeLine(line)
-            events.append(decoded.event)
-            hadProtocolWarning = hadProtocolWarning || decoded.hadProtocolWarning
-        }
-        return WatchDecodeResult(events: events, hadProtocolWarning: hadProtocolWarning)
-    }
-
-    private func decodeLine(_ line: String) -> (event: WatchEvent, hadProtocolWarning: Bool) {
-        guard let data = line.data(using: .utf8) else {
-            return (WatchEvent(kind: .log, message: line, level: nil), true)
-        }
-        guard data.count <= Self.maximumEventLineBytes else {
-            let prefix = String(decoding: data.prefix(Self.maximumEventLineBytes), as: UTF8.self)
-            return (WatchEvent(kind: .log, message: prefix + "… (event truncated)", level: nil), true)
-        }
-        guard let wire = try? JSONDecoder().decode(WireEvent.self, from: data) else {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let looksStructured = trimmed.hasPrefix("{") || trimmed.hasPrefix("[")
-            return (WatchEvent(kind: .log, message: line, level: nil), looksStructured)
-        }
-        guard let rawKind = wire.t else {
-            return (WatchEvent(kind: .log, message: line, level: nil), true)
-        }
-        guard let kind = WatchEventKind(rawValue: rawKind) else {
-            return (WatchEvent(kind: .log, message: wire.msg ?? line, level: "info"), false)
-        }
-
-        if [.ok, .warn, .error, .log].contains(kind), wire.msg == nil {
-            return (WatchEvent(kind: .log, message: line, level: nil), true)
-        }
-        if kind == .log, let level = wire.lvl, !["debug", "info", "warn", "error"].contains(level) {
-            return (WatchEvent(kind: .log, message: wire.msg ?? line, level: "info"), true)
-        }
-        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        if let state = object?["state"] {
-            guard state is [String: Any],
-                  let encodedState = try? JSONSerialization.data(withJSONObject: state),
-                  encodedState.count <= Self.maximumStateBytes else {
-                return (WatchEvent(kind: .log, message: line, level: nil), true)
-            }
-        } else if kind == .state {
-            return (WatchEvent(kind: .log, message: line, level: nil), true)
-        }
-        return (WatchEvent(kind: kind, message: wire.msg ?? line, level: wire.lvl), false)
-    }
-}
-
 struct CommandResult: Sendable {
     let exitCode: Int32
     let output: Data
     let errorOutput: Data
     let timedOut: Bool
+    let canceled: Bool
     let truncated: Bool
+}
+
+enum CommandOutputStream: Sendable {
+    case stdout, stderr
+}
+
+struct CommandOutputChunk: Sendable {
+    let stream: CommandOutputStream
+    let data: Data
 }
 
 enum CommandRunnerError: LocalizedError {
@@ -123,7 +57,10 @@ struct CommandRunner: Sendable {
         command: [String],
         in pluginRoot: URL,
         pluginID: String? = nil,
-        timeout overrideTimeout: TimeInterval? = nil
+        timeout overrideTimeout: TimeInterval? = nil,
+        secrets: [String: String] = [:],
+        retainPartialResultOnCancellation: Bool = false,
+        onOutput: (@Sendable (CommandOutputChunk) async -> Void)? = nil
     ) async throws -> CommandResult {
         guard let executable = command.first, !executable.isEmpty else {
             throw CommandRunnerError.emptyCommand
@@ -138,7 +75,12 @@ struct CommandRunner: Sendable {
         platformOptions.teardownSequence = [
             .gracefulShutDown(toProcessGroup: true, allowedDurationToNextStep: .seconds(5)),
         ]
-        let inheritedEnvironment = try environment(pluginRoot: pluginRoot, pluginID: pluginID)
+        var inheritedEnvironment = try environment(pluginRoot: pluginRoot, pluginID: pluginID)
+        let secretsFile = try makeSecretsFile(secrets)
+        defer {
+            if let secretsFile { try? FileManager.default.removeItem(at: secretsFile) }
+        }
+        if let secretsFile { inheritedEnvironment["KIWIOS_SECRETS_FILE"] = secretsFile.path }
         let subprocessEnvironment = Dictionary(uniqueKeysWithValues: inheritedEnvironment.map {
             (Subprocess.Environment.Key(rawValue: $0.key)!, $0.value)
         })
@@ -149,49 +91,10 @@ struct CommandRunner: Sendable {
             workingDirectory: FilePath(pluginRoot.path),
             platformOptions: platformOptions
         )
-        let outputBuffer = BoundedOutputBuffer(limit: maximumOutputBytes)
-        let errorBuffer = BoundedOutputBuffer(limit: maximumOutputBytes)
-        let effectiveTimeout = overrideTimeout ?? timeout
-
-        let outcome = try await withThrowingTaskGroup(of: CommandOutcome.self) { group in
-            group.addTask {
-                .completed(try await Self.execute(
-                    configuration,
-                    outputBuffer: outputBuffer,
-                    errorBuffer: errorBuffer
-                ))
-            }
-            group.addTask {
-                let seconds = min(max(0, effectiveTimeout), 9_223_372_036)
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                return .timedOut
-            }
-
-            let first = try await group.next()!
-            group.cancelAll()
-            return first
-        }
-        let output = await outputBuffer.snapshot()
-        let errorOutput = await errorBuffer.snapshot()
-
-        switch outcome {
-        case .completed(let exitCode):
-            return CommandResult(
-                exitCode: exitCode,
-                output: output.data,
-                errorOutput: errorOutput.data,
-                timedOut: false,
-                truncated: output.truncated || errorOutput.truncated
-            )
-        case .timedOut:
-            return CommandResult(
-                exitCode: -1,
-                output: output.data,
-                errorOutput: errorOutput.data,
-                timedOut: true,
-                truncated: output.truncated || errorOutput.truncated
-            )
-        }
+        return try await ProcessTransport.run(configuration: configuration,
+            timeout: overrideTimeout ?? timeout, maximumOutputBytes: maximumOutputBytes,
+            secrets: Array(secrets.values), retainPartialResultOnCancellation: retainPartialResultOnCancellation,
+            onOutput: onOutput)
     }
 
     private func resolve(_ executable: String, in pluginRoot: URL) throws -> URL {
@@ -236,10 +139,119 @@ struct CommandRunner: Sendable {
         return result
     }
 
+    private func makeSecretsFile(_ secrets: [String: String]) throws -> URL? {
+        guard !secrets.isEmpty else { return nil }
+        let data = try JSONSerialization.data(withJSONObject: secrets, options: [.sortedKeys])
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kiwios-secrets-\(UUID().uuidString).json")
+        guard FileManager.default.createFile(
+            atPath: url.path,
+            contents: data,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return url
+    }
+
+}
+
+enum ProcessTransportError: LocalizedError {
+    case outputLimitExceeded
+    var errorDescription: String? { "Command output exceeded the allowed capture size" }
+}
+
+/// Shared mechanics only. Each caller owns executable, environment, timeout,
+/// output overflow and process-group teardown policy through its configuration.
+enum ProcessTransport {
+    static func run(
+        configuration: Subprocess.Configuration,
+        timeout: TimeInterval,
+        maximumOutputBytes: Int,
+        maximumErrorBytes: Int? = nil,
+        secrets: [String] = [],
+        retainPartialResultOnCancellation: Bool = false,
+        onOutput: (@Sendable (CommandOutputChunk) async -> Void)? = nil,
+        failOnOutputOverflow: Bool = false
+    ) async throws -> CommandResult {
+        let outputBuffer = BoundedOutputBuffer(limit: maximumOutputBytes, secrets: secrets)
+        let errorBuffer = BoundedOutputBuffer(limit: maximumErrorBytes ?? maximumOutputBytes, secrets: secrets)
+
+        var outcome: CommandOutcome
+        do {
+            outcome = try await withThrowingTaskGroup(of: CommandOutcome.self) { group in
+                group.addTask {
+                    .completed(try await Self.execute(
+                        configuration,
+                        outputBuffer: outputBuffer,
+                        errorBuffer: errorBuffer,
+                        onOutput: onOutput, failOnOutputOverflow: failOnOutputOverflow
+                    ))
+                }
+                group.addTask {
+                    let seconds = min(max(0, timeout), 9_223_372_036)
+                    try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                    return .timedOut
+                }
+
+                let first = try await group.next()!
+                group.cancelAll()
+                return first
+            }
+        } catch is CancellationError {
+            guard retainPartialResultOnCancellation else { throw CancellationError() }
+            outcome = .canceled
+        }
+        if Task.isCancelled {
+            guard retainPartialResultOnCancellation else { throw CancellationError() }
+            outcome = .canceled
+        }
+        // A canceled reader may still hold a secret-length suffix. Flush it through
+        // the same redactor before taking the smaller structured-result snapshots.
+        let outputTail = await outputBuffer.finish()
+        if !outputTail.isEmpty { await onOutput?(CommandOutputChunk(stream: .stdout, data: outputTail)) }
+        let errorTail = await errorBuffer.finish()
+        if !errorTail.isEmpty { await onOutput?(CommandOutputChunk(stream: .stderr, data: errorTail)) }
+        let output = await outputBuffer.snapshot()
+        let errorOutput = await errorBuffer.snapshot()
+
+        switch outcome {
+        case .completed(let exitCode):
+            return CommandResult(
+                exitCode: exitCode,
+                output: output.data,
+                errorOutput: errorOutput.data,
+                timedOut: false,
+                canceled: false,
+                truncated: output.truncated || errorOutput.truncated
+            )
+        case .timedOut:
+            return CommandResult(
+                exitCode: -1,
+                output: output.data,
+                errorOutput: errorOutput.data,
+                timedOut: true,
+                canceled: false,
+                truncated: output.truncated || errorOutput.truncated
+            )
+        case .canceled:
+            return CommandResult(
+                exitCode: -1,
+                output: output.data,
+                errorOutput: errorOutput.data,
+                timedOut: false,
+                canceled: true,
+                truncated: output.truncated || errorOutput.truncated
+            )
+        }
+    }
+
     private static func execute(
         _ configuration: Subprocess.Configuration,
         outputBuffer: BoundedOutputBuffer,
-        errorBuffer: BoundedOutputBuffer
+        errorBuffer: BoundedOutputBuffer,
+        onOutput: (@Sendable (CommandOutputChunk) async -> Void)?,
+        failOnOutputOverflow: Bool
     ) async throws -> Int32 {
         let result = try await Subprocess.run(
             configuration,
@@ -249,10 +261,20 @@ struct CommandRunner: Sendable {
         ) { execution in
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
-                    try await readBounded(from: execution.standardOutput, into: outputBuffer)
+                    try await readBounded(
+                        from: execution.standardOutput,
+                        stream: .stdout,
+                        into: outputBuffer,
+                        onOutput: onOutput, failOnOutputOverflow: failOnOutputOverflow
+                    )
                 }
                 group.addTask {
-                    try await readBounded(from: execution.standardError, into: errorBuffer)
+                    try await readBounded(
+                        from: execution.standardError,
+                        stream: .stderr,
+                        into: errorBuffer,
+                        onOutput: onOutput, failOnOutputOverflow: failOnOutputOverflow
+                    )
                 }
                 try await group.waitForAll()
             }
@@ -265,10 +287,23 @@ struct CommandRunner: Sendable {
 
     private static func readBounded(
         from stream: SubprocessOutputSequence,
-        into buffer: BoundedOutputBuffer
+        stream outputStream: CommandOutputStream,
+        into buffer: BoundedOutputBuffer,
+        onOutput: (@Sendable (CommandOutputChunk) async -> Void)?,
+        failOnOutputOverflow: Bool
     ) async throws {
         for try await chunk in stream {
-            await buffer.append(Data(buffer: chunk))
+            let data = Data(buffer: chunk)
+            let retained = await buffer.append(data)
+            if failOnOutputOverflow, await buffer.truncated { throw ProcessTransportError.outputLimitExceeded }
+            if !retained.isEmpty {
+                await onOutput?(CommandOutputChunk(stream: outputStream, data: retained))
+            }
+        }
+        let final = await buffer.finish()
+        if failOnOutputOverflow, await buffer.truncated { throw ProcessTransportError.outputLimitExceeded }
+        if !final.isEmpty {
+            await onOutput?(CommandOutputChunk(stream: outputStream, data: final))
         }
     }
 }
@@ -280,148 +315,68 @@ private struct BoundedOutput: Sendable {
 
 private actor BoundedOutputBuffer {
     private let limit: Int
+    private let secrets: [Data]
+    private let withheldByteCount: Int
+    private var pending = Data()
     private var output = BoundedOutput()
 
-    init(limit: Int) {
+    init(limit: Int, secrets: [String] = []) {
         self.limit = limit
+        self.secrets = secrets.filter { !$0.isEmpty }.map { Data($0.utf8) }.sorted { $0.count > $1.count }
+        withheldByteCount = max(0, (self.secrets.map(\.count).max() ?? 1) - 1)
     }
 
-    func append(_ chunk: Data) {
-        let remaining = max(0, limit - output.data.count)
-        if remaining > 0 {
-            output.data.append(chunk.prefix(remaining))
+    func append(_ chunk: Data) -> Data {
+        pending.append(chunk)
+        let safeRawCount = max(0, pending.count - withheldByteCount)
+        return consume(rawByteCount: safeRawCount)
+    }
+
+    func finish() -> Data {
+        consume(rawByteCount: pending.count)
+    }
+
+    private func consume(rawByteCount: Int) -> Data {
+        guard rawByteCount > 0 else { return Data() }
+        var redacted = Data()
+        var consumed = 0
+        if secrets.isEmpty {
+            redacted = Data(pending.prefix(rawByteCount))
+            consumed = rawByteCount
         }
-        if chunk.count > remaining {
+        while consumed < rawByteCount {
+            let remaining = pending.dropFirst(consumed)
+            if let secret = secrets.first(where: { remaining.starts(with: $0) }) {
+                redacted.append(Data("[REDACTED]".utf8))
+                consumed += secret.count
+            } else {
+                redacted.append(pending[pending.index(pending.startIndex, offsetBy: consumed)])
+                consumed += 1
+            }
+        }
+        pending.removeFirst(consumed)
+        let remaining = max(0, limit - output.data.count)
+        let retained = Data(redacted.prefix(remaining))
+        if remaining > 0 {
+            output.data.append(retained)
+        }
+        if redacted.count > remaining {
             output.truncated = true
         }
+        // The file sink has its own larger bound; stream every redacted byte to it.
+        return redacted
     }
 
+    var truncated: Bool { output.truncated }
+
     func snapshot() -> BoundedOutput {
-        output
+        _ = consume(rawByteCount: pending.count)
+        return output
     }
 }
 
 private enum CommandOutcome: Sendable {
     case completed(Int32)
     case timedOut
-}
-
-enum PluginRunStatus: Equatable, Sendable {
-    case idle, running, ok, warn, error
-
-    var label: String {
-        switch self {
-        case .idle: "idle"
-        case .running: "running"
-        case .ok: "ok"
-        case .warn: "warn"
-        case .error: "error"
-        }
-    }
-}
-
-struct PluginState: Identifiable, Equatable, Sendable {
-    var id: String { manifest.id }
-    let manifest: PluginManifest
-    var status: PluginRunStatus = .idle
-    var message = "Ready"
-}
-
-@MainActor
-final class HubRuntime: ObservableObject {
-    @Published private(set) var plugins: [PluginState] = []
-    @Published private(set) var discoveryError: String?
-
-    private let runner: CommandRunner
-    private let decoder = WatchDecoder()
-    private var loaded: [String: LoadedPlugin] = [:]
-    private var activePluginIDs = Set<String>()
-
-    init(
-        pluginRoot: URL? = Bundle.main.url(forResource: "hello-check", withExtension: nil),
-        runner: CommandRunner = CommandRunner()
-    ) {
-        self.runner = runner
-        guard let root = pluginRoot else {
-            discoveryError = "Bundled hello-check plugin not found"
-            return
-        }
-        do {
-            let plugin = try PluginLoader().load(from: root)
-            loaded[plugin.manifest.id] = plugin
-            plugins = [PluginState(manifest: plugin.manifest)]
-        } catch {
-            discoveryError = error.localizedDescription
-        }
-    }
-
-    func runCheck(pluginID: String, checkID: String) async {
-        guard let plugin = loaded[pluginID],
-              let check = plugin.manifest.checks.first(where: { $0.id == checkID }) else { return }
-        await run(command: check.command, timeout: check.timeout?.seconds ?? 30, plugin: plugin)
-    }
-
-    func runAction(pluginID: String, actionID: String) async {
-        guard let plugin = loaded[pluginID],
-              let action = plugin.manifest.actions.first(where: { $0.id == actionID }) else { return }
-        await run(command: action.command, timeout: action.timeout?.seconds ?? 3_600, plugin: plugin)
-    }
-
-    private func run(command: [String], timeout: TimeInterval, plugin: LoadedPlugin) async {
-        guard activePluginIDs.insert(plugin.manifest.id).inserted else { return }
-        defer { activePluginIDs.remove(plugin.manifest.id) }
-        update(plugin.manifest.id, status: .running, message: "Running…")
-        do {
-            let result = try await runner.run(
-                command: command,
-                in: plugin.rootURL,
-                pluginID: plugin.manifest.id,
-                timeout: timeout
-            )
-            let decoded = decoder.decode(result.output)
-            let events = decoded.events
-            let terminal = events.last(where: { [.ok, .warn, .error].contains($0.kind) })
-            let emittedError = events.last(where: { $0.kind == .error })
-            let status: PluginRunStatus
-            if result.timedOut || emittedError != nil || ![0, 1].contains(result.exitCode) {
-                status = .error
-            } else if result.exitCode == 1 || terminal?.kind == .warn || decoded.hadProtocolWarning || result.truncated {
-                status = .warn
-            } else {
-                status = .ok
-            }
-            let stderr = String(decoding: result.errorOutput, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let messageFromResult: String
-            if result.timedOut {
-                messageFromResult = "Timed out"
-            } else if let emittedError {
-                messageFromResult = emittedError.message
-            } else if ![0, 1].contains(result.exitCode) {
-                messageFromResult = stderr.isEmpty ? "Exited \(result.exitCode)" : stderr
-            } else if let terminal {
-                messageFromResult = terminal.message
-            } else if let lastEvent = events.last {
-                messageFromResult = lastEvent.message
-            } else if !stderr.isEmpty {
-                messageFromResult = stderr
-            } else {
-                messageFromResult = result.exitCode == 0 ? "Completed" : "Exited 1"
-            }
-            var message = messageFromResult
-            if (decoded.hadProtocolWarning || result.truncated), status == .warn {
-                message = "Protocol warning: \(message)"
-            }
-            if result.truncated { message += " (output truncated)" }
-            update(plugin.manifest.id, status: status, message: message)
-        } catch {
-            update(plugin.manifest.id, status: .error, message: error.localizedDescription)
-        }
-    }
-
-    private func update(_ id: String, status: PluginRunStatus, message: String) {
-        guard let index = plugins.firstIndex(where: { $0.id == id }) else { return }
-        plugins[index].status = status
-        plugins[index].message = message
-    }
+    case canceled
 }

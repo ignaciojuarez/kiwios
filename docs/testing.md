@@ -2,15 +2,19 @@
 
 Tests protect public contracts and recovery paths, not private implementation details. Every phase adds unit tests for deterministic rules and a small number of vertical tests using temporary directories and real subprocesses.
 
+## Current implementation handoff
+
+On September 12, 2026, the unsigned Debug app built successfully with Xcode 27.0 (27A266a) for arm64 macOS, and all 51 tests passed with zero failures. Launch opened the application window and graceful quit completed. Runtime tests cover approved plugin execution, cancellation, output handling, timeout overrides, Homebrew requirement detection, explicit Homebrew install/uninstall descriptions, durable KiwiOS formula ownership, safe cleanup selection, bundled-source identity migration, Apple Silicon SMART device discovery, macOS awk compatibility for Volume Health, and action-only file logging; fixtures use isolated persistence. These results do not complete the release gates: signed-app lifecycle, setup, keyboard/VoiceOver, sleep/wake, browser workflows, and platform permission behavior still need manual validation.
+
 ## Manifest and installation
 
 - Missing, duplicate, unknown, wrong-type, invalid UTF-8, oversized, or unsupported-version fields.
-- Invalid IDs, SemVer, durations, dependencies, cycles, source references, config schemas, and duplicate contributions.
+- Invalid IDs, SemVer, durations, dependencies, Homebrew requirements, cycles, source references, config schemas, and duplicate contributions.
 - Absolute/parent traversal, symlink escape, case-fold collision, non-executable command, and files changed after validation.
 - Huge repositories, submodules, Git LFS placeholders, unsafe file modes, missing commits, network interruption, atomic-install failure, and rollback.
-- Permission expansion, license/manifest/catalog mismatch, duplicate installed IDs, retained data, and incompatible updates.
+- Permission expansion, license/manifest/catalog mismatch, duplicate installed IDs, complete removal, and incompatible updates.
 
-Validation never executes plugin code. Installer fixtures use local repositories in CI; network discovery is tested through a stub client.
+Validation never executes plugin code. Installer validation should use local repository fixtures and a stub network client; that expanded coverage remains pending.
 
 ## Process and watcher
 
@@ -18,13 +22,14 @@ Validation never executes plugin code. Installer fixtures use local repositories
 - Empty output, plain text, malformed/unknown JSONL, invalid UTF-8, partial final line, mixed event types, and terminal-event/exit-code precedence.
 - Exact and over-limit event, state, step, and log sizes; simultaneous stdout/stderr flooding must not deadlock.
 - Timeout/cancel before spawn, during output, and at natural exit; `SIGTERM` grace followed by process-group `SIGKILL`, including grandchildren.
-- App quit/crash during work, missing working directory, disk-full log writes, secret redaction, and plugin attempts to orphan a process.
+- App quit/crash during work, missing working directory, typed-result truncation, secret redaction, and plugin attempts to orphan a process.
 
 ## Queue, scheduler, and persistence
 
 - Lock contention, duplicate requests, fairness, skipped overlapping checks, cancellation, and idempotent terminal writes.
+- Active work remains published until completion; missing-dependency states persist while preserving previous enablement intent.
 - Sleep/wake, wall-clock and daylight-saving jumps, network changes, and skipped overlapping checks.
-- First launch, every schema migration, interrupted migration, corrupt database, missing optional logs, disk full, backup, restore, and downgrade refusal.
+- First launch, every schema migration, interrupted migration, corrupt database, legacy log cleanup, disk full, backup, restore, and downgrade refusal.
 - Restart recovery must distinguish queued, running, interrupted, canceled, failed, and safe-to-retry work.
 
 ## Remote boundary
@@ -32,6 +37,9 @@ Validation never executes plugin code. Installer fixtures use local repositories
 - Bind only to loopback; reject direct LAN/Funnel configuration and spoofed identity headers.
 - Missing/revoked tailnet identity, ACL denial, Tailscale outage/reconnect, and concurrent browser sessions.
 - CSRF and Origin rejection, escaped plugin text, oversized bodies, slow clients, replayed mutations, and confirmation expiry.
+- Failed remote startup must preserve enabled intent for bounded retry; stale listener/monitor completion must not close a newer instance.
+- Installed digests must survive tampered-source reload/disable without accepting those bytes under an approved SHA.
+- PWA phone navigation, typed enum/config values, read-only secret guidance, preservation of unsaved drafts across disconnects, confirmation dismissal after earlier acceptance, and disconnected mutation gating.
 - Remote mode blocks any operation that could open TCC, Keychain, Gatekeeper, license, device-trust, or administrator prompts.
 
 Use an injectable verified-identity boundary in tests. Do not make authorization decisions from caller-supplied HTTP headers.
@@ -40,7 +48,7 @@ Use an injectable verified-identity boundary in tests. Do not make authorization
 
 - Logout, cold FileVault boot, launch-at-login failure, app relaunch, fast user switching, sleep, power loss, and TCC revocation.
 - Empty/loading/error/stale states, unknown saved contribution IDs, incompatible state shapes, long/untrusted text, keyboard-only use, VoiceOver, and narrow phone layouts.
-- Loss of a plugin, Tailscale, or optional logs must leave local settings, Doctor, disable, and recovery paths usable.
+- Loss of a plugin or Tailscale must leave local settings, Doctor, disable, and recovery paths usable.
 
 ## Release gate
 
