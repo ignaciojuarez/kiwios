@@ -170,7 +170,7 @@ struct HubSettingsView: View {
         GroupBox("Plugin trust and configuration") {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("Adding trusted code, supplying write-only configuration, and removing installed data are attended operations.")
+                    Text("Local trust review and removal remain available here for recovery; write-only configuration stays attended.")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Reload", systemImage: "arrow.clockwise") { Task { await runtime.reload() } }

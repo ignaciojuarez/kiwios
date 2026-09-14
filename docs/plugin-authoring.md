@@ -26,9 +26,9 @@ Repository installation identifies immutable source, not a moving tag. Before sh
 2. Add an OSI-compatible license file and make its identifier match `plugin.toml`. Document the maintainer and a private security-reporting route. Remove credentials, host paths, device identifiers, and private operational inventory.
 3. Make every permission disclosure match the source's expected filesystem, process, network, secret, SSH, notification, and macOS access. Explain why each disclosure is needed in the repository README.
 4. Commit the exact reviewed tree. Record the lowercase 40-character commit with `git rev-parse HEAD^{commit}` and inspect that snapshot with `git show --stat --oneline <commit>` and `git ls-tree -r --full-tree <commit>`. Inspect the license at that commit with `git show <commit>:LICENSE`, adjusting the path if the plugin uses a subfolder.
-5. In **Attended Setup…**, enter the normalized GitHub HTTPS repository, full commit SHA, and plugin subfolder (`.` for the root). Stage it, compare the manifest and content digest, review disclosures, and explicitly trust the snapshot to install it. KiwiOS does not run hooks; declared Homebrew formulae require their own local confirmation.
+5. In the web **Plugins** page or **Attended Setup…**, enter the normalized GitHub HTTPS repository, full commit SHA, and plugin subfolder (`.` for the root). Stage it, compare the manifest and content digest, review disclosures, and explicitly trust the snapshot to install it. The web confirmation is identity-bound and expires after 60 seconds. KiwiOS does not run hooks; declared Homebrew formulae require their own local confirmation.
 
-The `kiwios-plugin` GitHub topic is reserved for future web discovery. Current installation requires the exact repository and commit in attended setup.
+The `kiwios-plugin` GitHub topic is reserved for future web discovery. Current installation requires the exact repository and commit in either the reviewed PWA flow or attended setup.
 
 ## Propose catalog inclusion
 

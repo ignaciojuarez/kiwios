@@ -73,12 +73,12 @@ Exit remains unverified: after login, a tailnet administrator can inspect status
 - [x] Add a web Home setup journey derived from Doctor, plugin enablement, launch-at-login, and actual remote availability.
 - [ ] Exercise native services and permission/lifecycle recovery on macOS after Xcode is ready.
 
-Prompt-free, identity-bound operations can run from the PWA. LaunchAgent changes, Homebrew mutations, notification authorization, secrets, trust, and other prompt-capable operations remain in attended setup. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
+Prompt-free, identity-bound operations can run from the PWA. The PWA can also stage immutable plugin source and require a reviewed confirmation, and can remove KiwiOS-owned plugin content without Homebrew mutation when Keychain cleanup remains interaction-disabled. Homebrew mutations, notification authorization, secret creation or updates, and other prompt-capable operations remain in attended setup. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
 
 ## 4 — discovery and explicit install
 
 - [x] Implement repository-plus-exact-SHA staging, review, install/update, and complete KiwiOS-owned-content removal.
-- [ ] Expose the implemented cached/rate-limited GitHub discovery through the web-primary product; exact-SHA installation already remains available in attended setup.
+- [ ] Expose the implemented cached/rate-limited GitHub discovery through the web-primary product; exact-SHA installation is available through the reviewed PWA flow and attended setup.
 - [x] Show source, commit, license, dependencies, and disclosure changes before trust; bind activation to approved repository, commit, and digests.
 - [x] Prepare a strict bundled catalog format and pull-request review policy. The catalog deliberately contains no approved entries.
 - [x] Add a copyable plugin template and a menu-bar/web author-to-install walkthrough.

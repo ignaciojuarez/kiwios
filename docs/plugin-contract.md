@@ -57,6 +57,8 @@ Required top-level fields are `id`, `name`, `version`, `kiwios_api`, and `licens
 
 Plugin IDs match `[a-z0-9]+(?:[.-][a-z0-9]+)*`. Contribution IDs match `[a-z0-9]+(?:-[a-z0-9]+)*` and are unique within their table. KiwiOS exposes them as `<plugin-id>/<contribution-id>`. IDs are stable storage and layout keys and must not change during an ordinary update.
 
+Each widget declares `size = "1x1"` or `size = "2x1"`. This is its fixed Home presentation width: compact widgets remain one column and wide widgets span two.
+
 `brew` is an optional list of unique Homebrew core formula names. KiwiOS shows every declared formula as installed or missing and blocks the plugin until all are installed. In attended setup, the operator can review the exact missing formulae and confirm a KiwiOS-managed `brew install --formula` job. Formula detection supports the standard Apple Silicon and Intel Homebrew Cellars. KiwiOS does not install Homebrew itself.
 
 The formula is a host requirement, not content embedded in the plugin. KiwiOS remembers only formulae it installed. When an installed plugin is removed, KiwiOS may offer to uninstall an owned formula after checking other plugin declarations and installed Homebrew reverse dependencies. Pre-existing or unverifiable formulae are retained, and the operator sees and controls the exact uninstall selection.

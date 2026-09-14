@@ -154,6 +154,7 @@ final class HubRuntime: ObservableObject {
         nativeOperationOrigins.removeAll()
         remote.challenges.removeAll()
         remote.nativeChallenges.removeAll()
+        await cancelRemotePluginChallenges()
         native.pendingConfirmation = nil
         pendingReview = nil
         liveOutput.removeAll()
@@ -766,6 +767,7 @@ final class HubRuntime: ObservableObject {
             nativeOperationOrigins.removeAll()
             remote.challenges.removeAll()
             remote.nativeChallenges.removeAll()
+            await cancelRemotePluginChallenges()
             try await audit("mode.\(value.rawValue)", pluginID: nil)
         } catch { operationError = error.localizedDescription }
         modeTransitioning = false
@@ -887,11 +889,14 @@ final class HubRuntime: ObservableObject {
         let widgetKeys = Set(plugins.flatMap { plugin in
             plugin.manifest.ui.widgets.map { "\(plugin.id)/\($0.id)" }
         })
+        let declaredWideWidgetKeys = Set(plugins.flatMap { plugin in
+            plugin.manifest.ui.widgets.filter { $0.size == "2x1" }.map { "\(plugin.id)/\($0.id)" }
+        })
         let sidebarKeys = Set(plugins.flatMap { plugin in
             plugin.manifest.ui.sidebar.map { "\(plugin.id)/\($0.id)" }
         })
         let normalized = RemoteLayoutPolicy.normalized(
-            layout, validWidgetKeys: widgetKeys, validSidebarKeys: sidebarKeys
+            layout, validWidgetKeys: widgetKeys, declaredWideWidgetKeys: declaredWideWidgetKeys, validSidebarKeys: sidebarKeys
         )
         guard normalized.widgets != layout.widgets || normalized.hiddenWidgets != layout.hiddenWidgets
                 || normalized.wideWidgets != layout.wideWidgets || normalized.sidebar != layout.sidebar else { return }
@@ -913,6 +918,7 @@ final class HubRuntime: ObservableObject {
         confirmationGrants.removeAll()
         remote.challenges.removeAll()
         remote.nativeChallenges.removeAll()
+        await cancelRemotePluginChallenges()
         refreshTask?.cancel()
         await startup?.value
         await doctorTask?.value

@@ -17,12 +17,17 @@ struct RemoteMutation: Codable, Equatable, Sendable {
         case cancelJob
         case disablePlugin
         case enablePlugin
+        case requestPluginInstall
+        case confirmPluginInstall
+        case requestPluginRemoval
+        case confirmPluginRemoval
         case saveConfig
         case refreshDoctor
         case saveLayout
         case reloadPlugins
         case refreshNativeTools
         case requestProcessTermination
+        case requestLaunchAgentRestart
         case confirmNativeOperation
         case probeSSH
         case deliverNotification
@@ -32,6 +37,9 @@ struct RemoteMutation: Codable, Equatable, Sendable {
     let operation: Operation
     let pluginID: String?
     let contributionID: String?
+    let repository: String?
+    let commit: String?
+    let pluginPath: String?
     let jobID: UUID?
     let values: [String: JSONValue]?
     let configRevision: Int64?
@@ -41,6 +49,7 @@ struct RemoteMutation: Codable, Equatable, Sendable {
     let wideWidgets: [String]?
     let sidebar: [String]?
     let pid: Int32?
+    let launchAgentLabel: String?
     let peerName: String?
     let title: String?
     let body: String?
@@ -60,12 +69,12 @@ enum RemoteLayoutPolicy {
     }
 
     static func normalized(
-        _ layout: HomeLayout, validWidgetKeys: Set<String>, validSidebarKeys: Set<String>
+        _ layout: HomeLayout, validWidgetKeys: Set<String>, declaredWideWidgetKeys: Set<String>, validSidebarKeys: Set<String>
     ) -> HomeLayout {
         HomeLayout(
             widgets: layout.widgets.filter(validWidgetKeys.contains),
             hiddenWidgets: layout.hiddenWidgets.intersection(validWidgetKeys),
-            wideWidgets: layout.wideWidgets.intersection(validWidgetKeys),
+            wideWidgets: declaredWideWidgetKeys.intersection(Set(layout.widgets)).intersection(validWidgetKeys),
             sidebar: layout.sidebar.filter(validSidebarKeys.contains),
             initialized: layout.initialized
         )

@@ -231,13 +231,14 @@ final class ManifestContractCompletionTests: XCTestCase {
         let layout = HomeLayout(
             widgets: ["removed/widget", "monitor/temperature"],
             hiddenWidgets: ["removed/widget", "monitor/temperature"],
-            wideWidgets: ["removed/widget"],
+            wideWidgets: ["removed/widget", "monitor/temperature"],
             sidebar: ["removed/page", "monitor/status"],
             initialized: true
         )
         let normalized = RemoteLayoutPolicy.normalized(
             layout,
             validWidgetKeys: ["monitor/temperature"],
+            declaredWideWidgetKeys: [],
             validSidebarKeys: ["monitor/status"]
         )
 
@@ -275,13 +276,46 @@ final class ManifestContractCompletionTests: XCTestCase {
         )))
     }
 
+    func testRemotePluginLifecycleMutationShapesAreExact() throws {
+        let accepted = [
+            #"{"requestID":"00000000-0000-0000-0000-000000000006","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":"."}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000007","operation":"confirmPluginInstall","confirmationToken":"token"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000008","operation":"requestPluginRemoval","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000009","operation":"confirmPluginRemoval","confirmationToken":"token"}"#,
+        ]
+        for json in accepted {
+            let data = Data(json.utf8)
+            try RemoteServer.validateMutationShape(data)
+            _ = try JSONDecoder().decode(RemoteMutation.self, from: data)
+        }
+        let rejected = [
+            #"{"requestID":"00000000-0000-0000-0000-000000000010","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000011","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":".","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000012","operation":"confirmPluginInstall","confirmationToken":"token","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000013","operation":"requestPluginRemoval"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000014","operation":"confirmPluginRemoval","confirmationToken":null}"#,
+        ]
+        for json in rejected {
+            XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(json.utf8)))
+        }
+    }
+
+    func testRemotePluginLifecycleRejectsLegacyOperationNames() {
+        for operation in ["installPlugin", "updatePlugin", "removePlugin"] {
+            XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(
+                "{\"requestID\":\"00000000-0000-0000-0000-000000000015\",\"operation\":\"\(operation)\",\"pluginID\":\"monitor\"}".utf8
+            )))
+        }
+    }
+
     func testRemoteNativeMutationShapesAreExact() throws {
         let accepted = [
             #"{"requestID":"00000000-0000-0000-0000-000000000011","operation":"refreshNativeTools"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000012","operation":"requestProcessTermination","pid":123}"#,
-            #"{"requestID":"00000000-0000-0000-0000-000000000013","operation":"confirmNativeOperation","confirmationToken":"token"}"#,
-            #"{"requestID":"00000000-0000-0000-0000-000000000014","operation":"probeSSH","peerName":"Server"}"#,
-            #"{"requestID":"00000000-0000-0000-0000-000000000015","operation":"deliverNotification","title":"KiwiOS","body":"Done"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000013","operation":"requestLaunchAgentRestart","launchAgentLabel":"example.agent"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000014","operation":"confirmNativeOperation","confirmationToken":"token"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000015","operation":"probeSSH","peerName":"Server"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000016","operation":"deliverNotification","title":"KiwiOS","body":"Done"}"#,
         ]
         for json in accepted {
             let data = Data(json.utf8)
@@ -292,16 +326,33 @@ final class ManifestContractCompletionTests: XCTestCase {
             #"{"requestID":"00000000-0000-0000-0000-000000000021","operation":"requestProcessTermination"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000022","operation":"probeSSH","peerName":"Server","destination":"untrusted"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000023","operation":"deliverNotification","title":"KiwiOS"}"#,
-            #"{"requestID":"00000000-0000-0000-0000-000000000024","operation":"refreshNativeTools","pluginID":"unexpected"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000024","operation":"requestLaunchAgentRestart"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000025","operation":"requestLaunchAgentRestart","launchAgentLabel":"example.agent","pid":123}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000026","operation":"refreshNativeTools","pluginID":"unexpected"}"#,
         ]
         for json in rejected {
             XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(json.utf8)))
         }
         let wrongType = Data(
-            #"{"requestID":"00000000-0000-0000-0000-000000000025","operation":"requestProcessTermination","pid":"123"}"#.utf8
+            #"{"requestID":"00000000-0000-0000-0000-000000000027","operation":"requestProcessTermination","pid":"123"}"#.utf8
         )
         try RemoteServer.validateMutationShape(wrongType)
         XCTAssertThrowsError(try JSONDecoder().decode(RemoteMutation.self, from: wrongType))
+    }
+
+    func testLaunchAgentRestartRejectsStaleAndDuplicateAgents() throws {
+        let agent = NativeLaunchAgent(
+            label: "example.agent", plistPath: "/Users/example/Library/LaunchAgents/example.agent.plist",
+            isLoaded: true, issue: nil
+        )
+        XCTAssertNoThrow(try NativeCapabilities.restartableLaunchAgent(label: agent.label, in: [agent]))
+        XCTAssertThrowsError(try NativeCapabilities.restartableLaunchAgent(label: agent.label, in: []))
+        XCTAssertThrowsError(try NativeCapabilities.restartableLaunchAgent(label: agent.label, in: [agent, agent]))
+        XCTAssertThrowsError(try NativeCapabilities.restartableLaunchAgent(
+            label: agent.label,
+            in: [NativeLaunchAgent(label: agent.label, plistPath: agent.plistPath, isLoaded: nil,
+                                    issue: "Duplicate Label appears in more than one owned plist")]
+        ))
     }
 
     func testRemoteNativeConfirmationIsIdentityBoundAndExpires() {
@@ -318,6 +369,34 @@ final class ManifestContractCompletionTests: XCTestCase {
         XCTAssertTrue(challenge.isValid(for: owner, now: now))
         XCTAssertFalse(challenge.isValid(for: other, now: now))
         XCTAssertFalse(challenge.isValid(for: owner, now: now.addingTimeInterval(60)))
+    }
+
+    func testRemotePluginReviewsAreIdentityBoundAndExpire() throws {
+        let owner = RemoteIdentity(login: "owner@example", displayName: "Owner")
+        let other = RemoteIdentity(login: "other@example", displayName: "Other")
+        let now = Date()
+        let loaded = try PluginLoader().load(from: plugin(id: "reviewed"))
+        let installation = InstallationReview(
+            id: UUID(), repository: "https://github.com/example/reviewed",
+            commit: "0123456789abcdef0123456789abcdef01234567", pluginPath: ".",
+            pluginID: loaded.manifest.id, name: loaded.manifest.name, version: loaded.manifest.version,
+            license: loaded.manifest.license, dependencies: [:], brew: [], permissions: [],
+            permissionChanges: PermissionDisclosureDiff(added: [], removed: []), manifestDigest: "manifest",
+            contentDigest: "content", loadedPlugin: loaded
+        )
+        let installChallenge = RemoteInstallationChallenge(
+            identity: owner, review: installation, expiresAt: now.addingTimeInterval(60)
+        )
+        let removalChallenge = RemoteRemovalChallenge(
+            identity: owner, review: PluginRemovalReview(pluginID: "reviewed", name: "Reviewed", homebrew: []),
+            expiresAt: now.addingTimeInterval(60)
+        )
+        for challenge in [installChallenge.isValid(for: owner, now: now), removalChallenge.isValid(for: owner, now: now)] {
+            XCTAssertTrue(challenge)
+        }
+        for challenge in [installChallenge.isValid(for: other, now: now), removalChallenge.isValid(for: owner, now: now.addingTimeInterval(60))] {
+            XCTAssertFalse(challenge)
+        }
     }
 
     @MainActor

@@ -90,6 +90,26 @@ struct RemoteNativeChallenge: Sendable {
     }
 }
 
+struct RemoteInstallationChallenge: Sendable {
+    let identity: RemoteIdentity
+    let review: InstallationReview
+    let expiresAt: Date
+
+    func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {
+        identity == candidate && expiresAt > now
+    }
+}
+
+struct RemoteRemovalChallenge: Sendable {
+    let identity: RemoteIdentity
+    let review: PluginRemovalReview
+    let expiresAt: Date
+
+    func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {
+        identity == candidate && expiresAt > now
+    }
+}
+
 extension HubRuntime {
     func restoreIntegrations() async {
         guard let store, let configuration, !stopped, !Task.isCancelled else { return }
@@ -595,15 +615,17 @@ extension HubRuntime {
         } catch { operationError = error.localizedDescription }
     }
 
-    private func finishRemoval(
+    func finishRemoval(
         _ removal: PendingPluginRemoval, store: PersistenceStore,
-        configuration: PluginConfiguration
+        configuration: PluginConfiguration, mode: OperationMode = .setup,
+        permitRemoteSecretCleanup: Bool = false
     ) async throws {
         guard PluginLexicalValidator.pluginID(removal.pluginID) else {
             throw PolicyError.blocked("Invalid plugin ID in pending removal record")
         }
         try await configuration.deleteWriteOnlySecrets(pluginID: removal.pluginID,
-            fields: removal.secretFields)
+            fields: removal.secretFields, mode: mode,
+            permitRemoteRemoval: permitRemoteSecretCleanup)
         let root = storageRoot
         let dataRoot = runner.pluginDataRoot!
         try await Task.detached {

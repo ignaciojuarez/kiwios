@@ -5,7 +5,7 @@
 It is not an operating system: macOS remains in charge. In the target design, KiwiOS owns execution, jobs, permissions, and UI; plugins are folders containing a manifest and executable commands. There is no Docker runtime and plugins do not ship HTML.
 
 > [!IMPORTANT]
-> KiwiOS is pre-alpha. The signed-app target now runs without a Dock icon as a compact menu-bar service; its authenticated tailnet PWA is the primary control plane. The web UI includes every plugin UI kind, Home/sidebar layout, plugin configuration and status, Doctor, Events, prompt-free host tools, and the installed Homebrew inventory. Attended setup on the Mac remains deliberately small and owns prompt-capable trust, Keychain, launch-at-login, exact-revision installation, and Tailscale publication. The unsigned Debug app builds with Xcode 27; signed-app lifecycle, accessibility, and broader macOS integration validation remain pending.
+> KiwiOS is pre-alpha. The signed-app target now runs without a Dock icon as a compact menu-bar service; its authenticated tailnet PWA is the primary control plane. The web UI includes every plugin UI kind, Home/sidebar layout, plugin configuration and status, Doctor, Events, prompt-free host tools, installed Homebrew inventory, and exact-SHA plugin install/update/removal reviews. Attended setup on the Mac remains deliberately small and owns prompt-capable Keychain work, Homebrew changes, launch-at-login, and Tailscale publication. The unsigned Debug app builds with Xcode 27; signed-app lifecycle, accessibility, and broader macOS integration validation remain pending.
 
 ## Design
 
@@ -37,9 +37,9 @@ To build and open the Debug app in one step, run `./scripts/run.sh`. It defaults
 
 ## Local use
 
-1. Open **Attended Setup…** from the menu bar. Enable launch at login, resolve Doctor findings, and optionally choose a development plugin directory or stage an exact GitHub revision.
-2. Review plugin source and disclosures locally, save prompt-capable secrets, then enable the tailnet web UI through Tailscale Serve.
-3. Choose **Open Web UI** from the menu. Home, plugin pages, Events, Tools, Brew inventory, plugin configuration, layout, and prompt-free settings live there.
+1. Open **Attended Setup…** from the menu bar. Enable launch at login, resolve Doctor findings, and optionally choose a development plugin directory or stage an exact GitHub revision locally.
+2. Save prompt-capable secrets, then enable the tailnet web UI through Tailscale Serve.
+3. Choose **Open Web UI** from the menu. Home, plugin pages, Events, Tools, Brew inventory, plugin configuration, layout, prompt-free settings, and reviewed exact-SHA plugin install/update/removal live there.
 4. Arrange widgets and sidebar pages directly on **Home**; use **Settings** to inspect setup state. Configuration and layout survive relaunch; secret values remain in Keychain and never enter the remote snapshot.
 
 Add the optional **Monitor** plugin for CPU, memory, thermal pressure, and SMART drive temperatures. Its declared Homebrew requirements are shown and installed only after attended confirmation. **Brew** provides a searchable installed inventory; **Tools** provides prompt-free host status plus the remote-safe process, named SSH, and authorized notification actions. Add **Watcher** to summarize plugins that declare persistent sessions.

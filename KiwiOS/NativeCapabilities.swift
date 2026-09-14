@@ -288,13 +288,7 @@ actor NativeCapabilities {
             }
             _ = try await Self.verifiedProcess(expected)
         case .kickstartLaunchAgent(let label):
-            guard mode == .setup else {
-                throw NativeCapabilityError.blocked("Launch agent changes require attended setup")
-            }
-            let matches = Self.userLaunchAgents().agents.filter { $0.label == label && $0.issue == nil }
-            guard matches.count == 1 else {
-                throw NativeCapabilityError.blocked("The launch agent is not a current-user agent declared in ~/Library/LaunchAgents")
-            }
+            try Self.restartableLaunchAgent(label: label, in: Self.userLaunchAgents().agents)
         case .homebrewUpdate:
             guard mode == .setup else {
                 throw NativeCapabilityError.blocked("Homebrew changes are disabled in remote policy mode")
@@ -375,10 +369,7 @@ actor NativeCapabilities {
             return result("Sent a quit signal to \(current.displayName)")
 
         case .kickstartLaunchAgent(let label):
-            let matches = Self.userLaunchAgents().agents.filter { $0.label == label && $0.issue == nil }
-            guard matches.count == 1 else {
-                throw NativeCapabilityError.blocked("The launch agent changed before execution")
-            }
+            try Self.restartableLaunchAgent(label: label, in: Self.userLaunchAgents().agents)
             let target = "gui/\(getuid())/\(label)"
             let output = try await commandRunner.run(
                 executable: "/bin/launchctl", arguments: ["kickstart", "-k", target], timeout: 15
@@ -740,6 +731,12 @@ actor NativeCapabilities {
             duplicateLabels.isEmpty ? nil : "Duplicate LaunchAgent labels cannot be restarted until the duplicate plist is removed.",
         ].compactMap { $0 }
         return LaunchAgentDiscovery(agents: agents, warning: warnings.isEmpty ? nil : warnings.joined(separator: " "))
+    }
+
+    static func restartableLaunchAgent(label: String, in agents: [NativeLaunchAgent]) throws {
+        guard agents.filter({ $0.label == label && $0.issue == nil }).count == 1 else {
+            throw NativeCapabilityError.blocked("The launch agent is not a current-user agent declared in ~/Library/LaunchAgents")
+        }
     }
 
     private static func boundedLaunchAgentData(_ url: URL) throws -> Data {
