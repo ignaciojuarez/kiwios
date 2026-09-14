@@ -19,13 +19,11 @@ options:
       file: true
   deploymentTarget:
     macOS: "15.0"
-  createIntermediateGroups: true
   xcodeVersion: "27.0"
 settings:
   MARKETING_VERSION: "0.1.0"
   CURRENT_PROJECT_VERSION: 1
   SWIFT_VERSION: "6.0"
-  MACOSX_DEPLOYMENT_TARGET: "15.0"
 targets:
   KiwiOS:
     type: application
@@ -34,10 +32,8 @@ targets:
       - path: app-icon.icon
         buildPhase: resources
       - path: KiwiOS
-        excludes: [Web]
-      - path: KiwiOS/Web
-        type: folder
-        buildPhase: resources
+        type: syncedFolder
+        explicitFolders: [Web]
       - path: plugins
         type: folder
         buildPhase: resources
@@ -69,6 +65,7 @@ targets:
     platform: macOS
     sources:
       - path: KiwiOSTests
+        type: syncedFolder
     dependencies:
       - target: KiwiOS
     settings:
