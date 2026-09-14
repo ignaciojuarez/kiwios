@@ -17,7 +17,7 @@ It is not an operating system: macOS remains in charge. In the target design, Ki
 
 ## Build
 
-The app's deployment target is macOS 15. Building requires a macOS release supported as an [Xcode 27 build host](https://developer.apple.com/xcode/system-requirements/), Xcode 27, and [XcodeGen](https://github.com/yonaskolb/XcodeGen). The deployment target is not the Xcode build-host requirement.
+The app's deployment target is macOS 15. Building requires a macOS release supported as an [Xcode 27 build host](https://developer.apple.com/xcode/system-requirements/), Xcode 27, and [XcodeGen 2.45 or newer](https://github.com/yonaskolb/XcodeGen). The deployment target is not the Xcode build-host requirement.
 
 ```sh
 xcodegen generate
