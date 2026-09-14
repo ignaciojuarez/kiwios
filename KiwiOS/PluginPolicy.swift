@@ -196,8 +196,10 @@ struct SecretStore: Sendable {
         }
     }
 
-    func delete(_ name: String, mode: OperationMode) throws {
-        guard mode == .setup else { throw PolicyError.blocked("Secret changes require attended setup mode") }
+    func delete(_ name: String, mode: OperationMode, permitRemoteRemoval: Bool = false) throws {
+        guard mode == .setup || permitRemoteRemoval else {
+            throw PolicyError.blocked("Secret changes require attended setup mode")
+        }
         var query = base(name)
         query[kSecUseAuthenticationContext as String] = Self.noninteractiveContext()
         let status = SecItemDelete(query as CFDictionary)
@@ -209,8 +211,22 @@ struct SecretStore: Sendable {
     /// The `<plugin-id>.config.` account prefix is reserved for schema-owned write-only fields.
     /// Enumerating it lets uninstall remove credentials created before ownership rows existed,
     /// even when the installed manifest has become unreadable.
-    func deleteConfigSecrets(pluginID: String, knownPluginIDs: Set<String>, mode: OperationMode) throws {
-        guard mode == .setup else { throw PolicyError.blocked("Secret changes require attended setup mode") }
+    func deleteConfigSecrets(
+        pluginID: String, knownPluginIDs: Set<String>, mode: OperationMode,
+        permitRemoteRemoval: Bool = false
+    ) throws {
+        guard mode == .setup || permitRemoteRemoval else {
+            throw PolicyError.blocked("Secret changes require attended setup mode")
+        }
+        let names = try configSecretNames(pluginID: pluginID, knownPluginIDs: knownPluginIDs)
+        for name in names { try delete(name, mode: mode, permitRemoteRemoval: permitRemoteRemoval) }
+    }
+
+    func verifyConfigSecretsCanBeRemoved(pluginID: String, knownPluginIDs: Set<String>) throws {
+        _ = try configSecretNames(pluginID: pluginID, knownPluginIDs: knownPluginIDs)
+    }
+
+    private func configSecretNames(pluginID: String, knownPluginIDs: Set<String>) throws -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -220,20 +236,20 @@ struct SecretStore: Sendable {
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return }
+        if status == errSecItemNotFound { return [] }
         guard status == errSecSuccess else {
-            throw PolicyError.blocked("Cannot enumerate plugin Keychain secrets without a prompt (\(status))")
+            throw PolicyError.blocked("Cannot remove plugin Keychain secrets without a prompt (\(status)); complete removal in Attended Setup")
         }
         let rows: [[String: Any]]
         if let values = result as? [[String: Any]] { rows = values }
         else if let value = result as? [String: Any] { rows = [value] }
         else { throw PolicyError.blocked("Keychain returned invalid secret metadata") }
         let owners = knownPluginIDs.union([pluginID])
-        for name in rows.compactMap({ $0[kSecAttrAccount as String] as? String })
-            where name.contains(".config.") {
+        return rows.compactMap({ $0[kSecAttrAccount as String] as? String }).filter { name in
+            guard name.contains(".config.") else { return false }
             let owner = owners.filter { name.hasPrefix("\($0).config.") }
                 .max { $0.count < $1.count }
-            if owner == pluginID { try delete(name, mode: mode) }
+            return owner == pluginID
         }
     }
 

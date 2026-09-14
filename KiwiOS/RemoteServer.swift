@@ -45,8 +45,8 @@ actor RemoteServer {
         let router = Router()
         let staticRoutes: [(RouterPath, Data, String, Bool)] = [
             ("/", assets.index, "text/html; charset=utf-8", false),
-            ("/app.css", assets.styles, "text/css; charset=utf-8", true),
-            ("/app.js", assets.script, "text/javascript; charset=utf-8", true),
+            ("/app.css", assets.styles, "text/css; charset=utf-8", false),
+            ("/app.js", assets.script, "text/javascript; charset=utf-8", false),
             ("/manifest.webmanifest", assets.manifest, "application/manifest+json", true),
             ("/favicon.png", assets.favicon, "image/png", true),
             ("/icon-192.png", assets.icon192, "image/png", true),
@@ -282,11 +282,14 @@ actor RemoteServer {
         case .refreshCheck, .requestAction: fields = ["pluginID", "contributionID"]
         case .confirmAction: fields = ["confirmationToken"]
         case .cancelJob: fields = ["jobID"]
-        case .disablePlugin, .enablePlugin: fields = ["pluginID"]
+        case .disablePlugin, .enablePlugin, .requestPluginRemoval: fields = ["pluginID"]
+        case .requestPluginInstall: fields = ["repository", "commit", "pluginPath"]
+        case .confirmPluginInstall, .confirmPluginRemoval: fields = ["confirmationToken"]
         case .saveConfig: fields = ["pluginID", "values", "configRevision"]
         case .refreshDoctor, .reloadPlugins, .refreshNativeTools: fields = []
         case .saveLayout: fields = ["widgets", "hiddenWidgets", "wideWidgets", "sidebar"]
         case .requestProcessTermination: fields = ["pid"]
+        case .requestLaunchAgentRestart: fields = ["launchAgentLabel"]
         case .confirmNativeOperation: fields = ["confirmationToken"]
         case .probeSSH: fields = ["peerName"]
         case .deliverNotification: fields = ["title", "body"]

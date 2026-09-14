@@ -151,7 +151,10 @@ actor PluginConfiguration {
         try secrets.write(value, named: name, mode: mode)
     }
 
-    func deleteWriteOnlySecrets(pluginID: String, fields: [String], mode: OperationMode = .setup) async throws {
+    func deleteWriteOnlySecrets(
+        pluginID: String, fields: [String], mode: OperationMode = .setup,
+        permitRemoteRemoval: Bool = false
+    ) async throws {
         await acquire(pluginID)
         defer { release(pluginID) }
         try Task.checkCancellation()
@@ -159,7 +162,18 @@ actor PluginConfiguration {
         let installedIDs = Set((try await store.plugins()).map(\.id))
         let retainedOwnerIDs = Set(try await store.pluginSecretOwnerIDs())
         try secrets.deleteConfigSecrets(pluginID: pluginID,
-            knownPluginIDs: installedIDs.union(retainedOwnerIDs), mode: mode)
+            knownPluginIDs: installedIDs.union(retainedOwnerIDs), mode: mode,
+            permitRemoteRemoval: permitRemoteRemoval)
+    }
+
+    /// Verifies that a remote removal can enumerate its owned secrets without opening Keychain UI.
+    func verifyRemoteSecretRemoval(pluginID: String) async throws {
+        await acquire(pluginID)
+        defer { release(pluginID) }
+        let installedIDs = Set((try await store.plugins()).map(\.id))
+        let retainedOwnerIDs = Set(try await store.pluginSecretOwnerIDs())
+        try secrets.verifyConfigSecretsCanBeRemoved(pluginID: pluginID,
+            knownPluginIDs: installedIDs.union(retainedOwnerIDs))
     }
 
     private func acquire(_ pluginID: String) async {
