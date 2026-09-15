@@ -4,8 +4,8 @@ KiwiOS uses GitHub for immutable plugin source. It does not host packages or ope
 
 ## Two discovery levels
 
-1. **Community discovery:** cached GitHub search support exists for the `kiwios-plugin` topic, but the web-primary product does not expose search yet. PWA installation starts from an operator-supplied canonical GitHub repository URL; KiwiOS resolves its current `HEAD` to an immutable commit and uses the repository root as the plugin source. Attended setup retains the explicit commit and subfolder workflow for catalog and author tooling.
-2. **Curated catalog:** KiwiOS reads a bundled, read-only catalog containing metadata for approved exact commits. Catalog inclusion means the manifest, source, license, and basic behavior were reviewed at that SHA. It is not a warranty, security certification, or automatic-update channel. The catalog in the current build has no approved entries; publishing and maintaining it as an external repository remains future operational work.
+1. **Community discovery:** the Plugins **Discover** section searches public GitHub repositories tagged `kiwios-plugin` on submit. Empty query means the topic only. Results are unreviewed; stars measure interest, not trust. Installing a community result sends only `{repository}`; KiwiOS resolves `HEAD` to an immutable commit and stages the repository root. The header **+** dialog is the same URL install. Attended setup retains the explicit commit and subfolder workflow for author tooling.
+2. **Featured catalog:** KiwiOS reads a bundled, read-only catalog of approved exact commits in dedicated plugin repositories. Catalog inclusion means the manifest, source, license, and basic behavior were reviewed at that SHA. It is not a warranty, security certification, or automatic-update channel. Featured **Install** sends `{repository, commit, pluginPath, catalogID}`; the server stages the bundled catalog fields after they match, then compares the staged manifest with the catalog before showing `reviewed: true`. Do not catalog a plugin from a path inside the KiwiOS application repository.
 
 A catalog entry contains:
 
@@ -13,6 +13,7 @@ A catalog entry contains:
 {
   "id": "example.plugin",
   "name": "Example",
+  "description": "Optional card subtitle from the catalog, not GitHub.",
   "repository": "https://github.com/example/kiwios-plugin",
   "commit": "40-character-git-sha",
   "path": ".",
@@ -26,7 +27,7 @@ The manifest at `path` must match the entry's ID, version, API, and license. Cat
 
 The app loads `catalog/catalog.json` from its signed resources as read-only data. It rejects malformed entries, duplicate IDs, non-normalized repositories, unsafe paths, and non-exact commits. Selecting a reviewed entry fills its repository, commit, and plugin path; after staging, KiwiOS compares the validated manifest with the catalog metadata before presenting it as that reviewed revision. The catalog never bypasses the ordinary source inspection and trust confirmation.
 
-When web discovery is added, reviewed commits must remain visually distinct from unreviewed community repositories; stars indicate interest, not trust. The existing search implementation runs only on user request, caches responses with GitHub's validators, and reports rate-limit or offline errors without requiring a GitHub token.
+Reviewed catalog rows stay visually distinct from unreviewed community repositories: Featured cards show a Reviewed label and the catalog description; community cards show a Community label and GitHub description. Stars indicate interest, not trust. Search runs only on user submit, caches responses with GitHub's validators, and reports rate-limit or offline errors in Discover without requiring a GitHub token. An installed plugin is recognized by matching `catalog[].id` to `plugins[].id`; Discover does not add a separate installed flag.
 
 ## Install
 
@@ -38,11 +39,11 @@ The API 1 installer supports bundled plugins, an explicitly selected local devel
 4. shows repository identity, commit, manifest/content digest, license, dependencies, disclosed permissions, and disclosure changes in a bounded review;
 5. requires explicit trust and records those exact approval fields. In the PWA, the review is bound to the verified tailnet identity, expires after 60 seconds, and is consumed once;
 6. copies the staged snapshot atomically into `InstalledPlugins/<id>/<commit>` and verifies it again before launch;
-7. records it as enabled and begins readiness checks. The web can separately confirm only that approved plugin's currently missing declared formulae and queue the local Homebrew install; it never opens a system prompt.
+7. records it as enabled and begins readiness checks. If the reviewed confirmation listed missing declared formulae, KiwiOS revalidates that exact list and queues the local Homebrew install without a second dialog. Retry of still-missing formulae uses **Install packages** on the plugin card; it never opens a system prompt.
 
 The development directory is never treated as curated. Changes there are revalidated and require reapproval when their manifest disclosure changes.
 
-An approved plugin ID is bound to its source repository. The same ID from another source is a conflict, not an update; a local development source has its own recorded fingerprint. Duplicate installed IDs, a mismatched catalog entry, a missing commit, Git submodules, Git LFS placeholders, and manifest paths escaping the repository fail installation. API 1 does not run install scripts, Git hooks, or content filters. Missing declared Homebrew formulae are installed only through a separate, explicitly confirmed local operation.
+An approved plugin ID is bound to its source repository. The same ID from another source is a conflict, not an update; a local development source has its own recorded fingerprint. Duplicate installed IDs, a mismatched catalog entry, a missing commit, Git submodules, Git LFS placeholders, and manifest paths escaping the repository fail installation. API 1 does not run install scripts, Git hooks, or content filters. Missing declared Homebrew formulae are named in the install confirmation and queued with that one confirm. A later retry remains a separate **Install packages** confirmation. KiwiOS never opens a system prompt for this.
 
 ## Updates and removal
 

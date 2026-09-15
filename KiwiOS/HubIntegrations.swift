@@ -94,6 +94,7 @@ struct RemoteNativeChallenge: Sendable {
 struct RemoteInstallationChallenge: Sendable {
     let identity: RemoteIdentity
     let review: InstallationReview
+    let missingBrew: [String]
     let expiresAt: Date
 
     func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {

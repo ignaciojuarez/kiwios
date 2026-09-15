@@ -48,20 +48,42 @@ case "$mode" in
             printf '%s\n' '{"t":"error","msg":"macmon is missing; install the required package from Plugins"}'
             exit 2
         fi
-        data=$($macmon pipe --samples 1 --interval 100 2>/dev/null || true)
-        temperature=$(printf '%s' "$data" | /usr/bin/plutil -extract "temp.$sensor" raw -o - - 2>/dev/null || true)
-        case "$temperature" in
-            ''|*[!0-9.-]*)
-                printf '{"t":"error","msg":"macmon did not report a %s temperature"}\n' "$label"
-                exit 2
-                ;;
-        esac
-        if ! /usr/bin/awk -v temperature="$temperature" 'BEGIN { exit !(temperature >= 10 && temperature <= 125) }'; then
+        # Idle Apple silicon GPUs often zero most sensors, so a single sample can
+        # average to ~2 °C. Take a few samples and keep the highest usable reading.
+        data=$($macmon pipe --samples 3 --interval 200 2>/dev/null || true)
+        chosen=
+        idle=
+        implausible=
+        while IFS= read -r line || [ -n "$line" ]; do
+            [ -n "$line" ] || continue
+            temperature=$(printf '%s' "$line" | /usr/bin/plutil -extract "temp.$sensor" raw -o - - 2>/dev/null || true)
+            case "$temperature" in
+                ''|*[!0-9.-]*) continue ;;
+            esac
+            if /usr/bin/awk -v temperature="$temperature" 'BEGIN { exit !(temperature >= 10 && temperature <= 125) }'; then
+                if [ -z "$chosen" ] || /usr/bin/awk -v temperature="$temperature" -v chosen="$chosen" 'BEGIN { exit !(temperature > chosen) }'; then
+                    chosen=$temperature
+                fi
+            elif /usr/bin/awk -v temperature="$temperature" 'BEGIN { exit !(temperature >= 0 && temperature < 10) }'; then
+                idle=1
+            else
+                implausible=1
+            fi
+        done <<EOF
+$data
+EOF
+        if [ -n "$chosen" ]; then
+            temperature=$(/usr/bin/awk -v temperature="$chosen" 'BEGIN { printf "%.1f", temperature }')
+            printf '{"t":"ok","msg":"%s temperature is %s °C","state":{"value":%s,"unit":"°C","detail":"Average Apple silicon %s sensor temperature"}}\n' "$label" "$temperature" "$temperature" "$label"
+        elif [ -n "$idle" ]; then
+            printf '{"t":"warn","msg":"%s temperature is unavailable while idle","state":{"value":"Idle","detail":"macmon idle-sensor average was below 10 °C"}}\n' "$label"
+        elif [ -n "$implausible" ]; then
             printf '{"t":"error","msg":"macmon reported an implausible %s temperature"}\n' "$label"
             exit 2
+        else
+            printf '{"t":"error","msg":"macmon did not report a %s temperature"}\n' "$label"
+            exit 2
         fi
-        temperature=$(/usr/bin/awk -v temperature="$temperature" 'BEGIN { printf "%.1f", temperature }')
-        printf '{"t":"ok","msg":"%s temperature is %s °C","state":{"value":%s,"unit":"°C","detail":"Average Apple silicon %s sensor temperature"}}\n' "$label" "$temperature" "$temperature" "$label"
         ;;
     drive-temperatures)
         smartctl=$(command -v smartctl || true)

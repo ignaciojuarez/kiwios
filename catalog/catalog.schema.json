@@ -21,6 +21,7 @@
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" },
         "name": { "type": "string", "pattern": ".*\\S.*" },
+        "description": { "type": "string", "pattern": ".*\\S.*" },
         "repository": { "type": "string", "pattern": "^https://github\\.com/(?!\\.{1,2}/)[a-z0-9._-]+/(?!\\.{1,2}$)(?![a-z0-9._-]+\\.git$)[a-z0-9._-]+$" },
         "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "path": { "type": "string", "pattern": "^(?:\\.|(?![~/])(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)(?!.*[\\u0000-\\u001F\\u007F])[^/]+(?:/[^/]+)*)$" },
@@ -37,6 +38,7 @@
         {
           "id": "example.plugin",
           "name": "Example Plugin",
+          "description": "Example catalog subtitle. Not an approved plugin.",
           "repository": "https://github.com/example/kiwios-plugin",
           "commit": "0123456789abcdef0123456789abcdef01234567",
           "path": ".",

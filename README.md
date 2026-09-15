@@ -46,7 +46,7 @@ Add the optional **Monitor** plugin for CPU and memory usage, CPU and GPU temper
 
 Remote access starts only after the owning user logs in and unlocks FileVault. KiwiOS rejects conflicting Serve/Funnel settings, binds HTTP only on loopback, and never opens a macOS prompt from a browser request.
 
-Plugin authors can copy the [plugin template](examples/plugin-template/) and follow the [author-to-install walkthrough](docs/plugin-authoring.md). No Swift or SDK is required.
+On the web **Plugins** tab, **Discover** lists featured cataloged commits and searches public GitHub repositories tagged `kiwios-plugin`. Plugin authors can copy the [plugin template](examples/plugin-template/) and follow the [author-to-install walkthrough](docs/plugin-authoring.md). No Swift or SDK is required.
 
 ## Documentation
 
@@ -62,6 +62,8 @@ Plugin authors can copy the [plugin template](examples/plugin-template/) and fol
 - [Remote HTTP and PWA](docs/remote.md)
 - [Plugin authoring](docs/plugin-authoring.md)
 - [Plugin distribution](docs/marketplace.md)
+- [Xcodes and iOS development plugin proposal](docs/xcodes-plugin.md)
+- [iOS build library and phone install plugin proposal](docs/ios-build-library-plugin.md)
 - [Operations and recovery](docs/operations.md)
 - [MCP hosting](docs/mcp.md)
 - [Visual language](docs/inspiration.md)

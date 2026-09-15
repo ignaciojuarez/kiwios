@@ -45,7 +45,7 @@ KiwiOS executes declared argv; it never imports plugin code. Plugin commands may
 
 Plugins are trusted code running as the KiwiOS user. The app is intentionally not App Sandbox-enabled, so a plugin process can exercise that user's ambient access. Manifest permissions disclose intent and gate capabilities brokered by KiwiOS; they are not a sandbox for arbitrary child-process behavior.
 
-Bundled plugins and plugins from the selected development directory require explicit approval before execution. The web review is bound to the verified tailnet identity and the exact source fingerprint; the attended sheet remains available for local recovery. Approval records the canonical source path, manifest digest, full content digest, and disclosure digest. KiwiOS revalidates the source and digest immediately before launch and disables changed content. Installed plugins bind approval to the canonical repository and exact commit as well as manifest/content digests. The bundled curated catalog is present but empty. See [permissions.md](permissions.md) and [marketplace.md](marketplace.md).
+Bundled plugins and plugins from the selected development directory require explicit approval before execution. The web review is bound to the verified tailnet identity and the exact source fingerprint; the attended sheet remains available for local recovery. Approval records the canonical source path, manifest digest, full content digest, and disclosure digest. KiwiOS revalidates the source and digest immediately before launch and disables changed content. Installed plugins bind approval to the canonical repository and exact commit as well as manifest/content digests. The bundled curated catalog lists reviewed exact commits from dedicated plugin repositories. See [permissions.md](permissions.md) and [marketplace.md](marketplace.md).
 
 ## Native capabilities
 
@@ -67,11 +67,12 @@ Plugins may require versioned native capabilities. In API 1 a dependency means â
 | `native.notify` | notification outbox |
 | `native.update` | macOS update discovery and confirmed application |
 | `native.http` | loopback Serve backend and PWA surface |
+| `native.artifact-delivery` | revalidated OTA manifest and one IPA from an approved plugin's library |
 | `native.mcp` | future MCP supervision and gateway |
 
 Capabilities version independently. A breaking behavior change increments that capability's integer version.
 
-The current runtime advertises `native.jobs`, `native.watcher`, `native.secrets`, `native.processes`, `native.launchd`, `native.power`, `native.brew`, `native.ssh`, and `native.notify`, alongside the implemented remote capabilities. `native.network`, `native.update`, and `native.mcp` remain future boundaries.
+The current runtime advertises `native.jobs`, `native.watcher`, `native.secrets`, `native.processes`, `native.launchd`, `native.power`, `native.brew`, `native.ssh`, `native.notify`, and `native.artifact-delivery`, alongside the implemented remote capabilities. `native.network`, `native.update`, and `native.mcp` remain future boundaries.
 
 The web Brew view reads the installed formula and cask inventory from `brew info --installed --json=v2`, including versions, formula install reasons, dependency relationships, and outdated state. Web Tools shows regular applications, at most 50 owned plists from `~/Library/LaunchAgents`, FileVault and low-power state, named SSH peers, and notification authorization. Remote policy permits prompt-free process termination, confirmation-bound restart of a revalidated current-user LaunchAgent, configured SSH probes, delivery through an already-authorized notification outbox, and a confirmation-bound local install of an approved plugin's exact missing declared Homebrew formulae. Homebrew updates, upgrades, uninstalls, notification authorization, and SSH allowlist edits remain attended. The bundled optional `monitor` plugin reports CPU and memory use, Apple-silicon CPU and GPU temperatures, thermal pressure, and SMART drive temperatures; its Home widgets include CPU temperature, GPU temperature, and the hottest readable drive. `volume-health` is an additional generic consumer of the plugin UI kinds. Plugins declare required Homebrew core formulae. KiwiOS reports their installed state, can install missing formulae through a separately confirmed local job, and records only those installs for ownership-aware cleanup when a plugin is removed.
 

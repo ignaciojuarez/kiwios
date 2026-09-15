@@ -19,6 +19,7 @@ enum RemoteServerError: LocalizedError {
 actor RemoteServer {
     typealias Snapshot = @Sendable (RemoteIdentity, RemoteRequestDeadline) async throws -> Data
     typealias Mutate = @Sendable (RemoteMutation, RemoteIdentity, RemoteRequestDeadline) async throws -> Data
+    typealias Artifact = @Sendable (String, String) async throws -> Response
     typealias Terminated = @Sendable () async -> Void
 
     private static let maximumMutationBytes = 64 * 1_024
@@ -32,7 +33,7 @@ actor RemoteServer {
 
     /// Binds the backend before Serve is changed. Requests stay unavailable until `activate`.
     func start(plan: RemotePublicationPlan, snapshot: @escaping Snapshot, mutate: @escaping Mutate,
-               onTermination: @escaping Terminated) async throws {
+               artifact: Artifact? = nil, onTermination: @escaping Terminated) async throws {
         guard serviceTask == nil, !isStopping else { throw RemoteServerError.alreadyRunning }
         let assets = try RemoteWebAssets.load()
         let security = try RemoteSecurity(expectedOrigin: plan.origin)
@@ -111,6 +112,21 @@ actor RemoteServer {
                 var response = Self.errorResponse(error)
                 if let nextCSRF { response.headers[Self.csrfHeader] = nextCSRF }
                 return response
+            }
+        }
+        if let artifact {
+            for resource in ["manifest.plist", "app.ipa"] {
+                router.get("/ota/{token}/\(resource)") { request, context -> Response in
+                    do {
+                        guard await gate.isActive, Self.isPublishedServeRequest(request, expectedHost: expectedHost) else {
+                            throw RemoteSecurityError.invalidOrigin
+                        }
+                        guard let token = context.parameters.get("token"), !token.isEmpty else {
+                            throw PolicyError.blocked("Missing install token")
+                        }
+                        return try await artifact(token, resource)
+                    } catch { return Self.errorResponse(error) }
+                }
             }
         }
 
@@ -261,6 +277,10 @@ actor RemoteServer {
         hasExpectedHost(request, expectedHost: expectedHost) && (try? identity(request)) != nil
     }
 
+    private static func isPublishedServeRequest(_ request: Request, expectedHost: String) -> Bool {
+        request.headers[tailscaleFunnelHeader] == nil && hasExpectedHost(request, expectedHost: expectedHost)
+    }
+
     private static func sessionCookie(_ request: Request) -> String? {
         guard let header = request.headers[.cookie] else { return nil }
         for component in header.split(separator: ";") {
@@ -277,26 +297,50 @@ actor RemoteServer {
             throw RemoteSecurityError.invalidIdentity
         }
         let common = Set(["requestID", "operation"])
-        let fields: Set<String>
+        let accepted: Set<Set<String>>
         switch operation {
-        case .refreshCheck, .requestAction: fields = ["pluginID", "contributionID"]
-        case .confirmAction: fields = ["confirmationToken"]
-        case .cancelJob: fields = ["jobID"]
+        case .refreshCheck, .requestAction:
+            accepted = [common.union(["pluginID", "contributionID"])]
+        case .confirmAction:
+            accepted = [common.union(["confirmationToken"])]
+        case .cancelJob:
+            accepted = [common.union(["jobID"])]
         case .disablePlugin, .enablePlugin, .requestPluginDependencies, .requestPluginUpdate,
-             .requestPluginRemoval: fields = ["pluginID"]
-        case .requestPluginInstall: fields = ["repository"]
-        case .confirmPluginEnable, .confirmPluginInstall, .confirmPluginRemoval: fields = ["confirmationToken"]
-        case .saveConfig: fields = ["pluginID", "values", "configRevision"]
-        case .refreshDoctor, .reloadPlugins, .refreshNativeTools: fields = []
-        case .saveLayout: fields = ["widgets", "hiddenWidgets", "wideWidgets", "sidebar"]
-        case .requestProcessTermination: fields = ["pid"]
-        case .requestLaunchAgentRestart: fields = ["launchAgentLabel"]
-        case .confirmNativeOperation: fields = ["confirmationToken"]
-        case .probeSSH: fields = ["peerName"]
-        case .deliverNotification: fields = ["title", "body"]
+             .requestPluginRemoval:
+            accepted = [common.union(["pluginID"])]
+        case .requestPluginInstall:
+            accepted = [
+                common.union(["repository"]),
+                common.union(["repository", "commit", "pluginPath", "catalogID"]),
+            ]
+        case .searchPlugins:
+            accepted = [common.union(["query"])]
+        case .confirmPluginEnable, .confirmPluginInstall, .confirmPluginRemoval:
+            accepted = [common.union(["confirmationToken"])]
+        case .saveConfig:
+            accepted = [common.union(["pluginID", "values", "configRevision"])]
+        case .refreshDoctor, .reloadPlugins, .refreshNativeTools:
+            accepted = [common]
+        case .saveLayout:
+            accepted = [common.union(["widgets", "hiddenWidgets", "wideWidgets", "sidebar"])]
+        case .requestProcessTermination:
+            accepted = [common.union(["pid"])]
+        case .requestLaunchAgentRestart:
+            accepted = [common.union(["launchAgentLabel"])]
+        case .confirmNativeOperation:
+            accepted = [common.union(["confirmationToken"])]
+        case .probeSSH:
+            accepted = [common.union(["peerName"])]
+        case .deliverNotification:
+            accepted = [common.union(["title", "body"])]
+        case .requestArtifactInstall:
+            accepted = [common.union(["pluginID", "artifactID"])]
+        case .confirmArtifactInstall:
+            accepted = [common.union(["confirmationToken"])]
         }
-        guard Set(object.keys) == common.union(fields),
-              fields.allSatisfy({ object[$0] != nil && !(object[$0] is NSNull) }) else {
+        let keys = Set(object.keys)
+        guard accepted.contains(keys),
+              keys.subtracting(common).allSatisfy({ object[$0] != nil && !(object[$0] is NSNull) }) else {
             throw RemoteSecurityError.invalidIdentity
         }
     }

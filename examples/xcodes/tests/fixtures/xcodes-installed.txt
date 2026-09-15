@@ -1,0 +1,1 @@
+27.0 (27A266a) [Apple Silicon] (Selected)	__ROOT__/Xcode.app

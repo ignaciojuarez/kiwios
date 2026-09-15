@@ -1,7 +1,7 @@
 id = "monitor"
 name = "Monitor"
 description = "CPU, memory, thermal pressure, and storage temperatures."
-version = "0.3.0"
+version = "0.3.1"
 kiwios_api = "1"
 license = "MIT"
 brew = ["macmon", "smartmontools"]

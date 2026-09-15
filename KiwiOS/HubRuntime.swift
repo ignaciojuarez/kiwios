@@ -37,6 +37,10 @@ final class HubRuntime: ObservableObject {
     @Published var marketplaceBusy = false
     @Published var marketplaceResults: [PluginCatalogResult] = []
     @Published var curatedEntries: [CuratedPluginEntry] = []
+    var pluginSearchQuery = ""
+    var pluginSearchResults: [PluginCatalogResult] = []
+    var pluginSearchError: String?
+    var pluginSearchSearchedAt: Date?
     @Published var pendingInstallation: InstallationReview?
     @Published var pendingRemoval: PluginRemovalReview?
 
@@ -80,7 +84,8 @@ final class HubRuntime: ObservableObject {
     static let capabilities = ["native.jobs": 1, "native.watcher": 1, "native.secrets": 1,
         "native.processes": 1, "native.launchd": 1,
         "native.brew": 1, "native.ssh": 1, "native.power": 1, "native.notify": 1,
-        "native.tailscale": 1, "native.http": 1, "native.auth": 1]
+        "native.tailscale": 1, "native.http": 1, "native.auth": 1,
+        "native.artifact-delivery": 1]
 
     init(
         pluginRoot: URL? = nil,
@@ -213,7 +218,10 @@ final class HubRuntime: ObservableObject {
                     if let existing, !sourceMatches(existing, plugin: plugin, fingerprint: fingerprint) {
                         state.lifecycle = .error
                         state.message = "Source conflict: this ID is already bound to another plugin directory"
-                    } else if let existing, existing.enabled, existing.lifecycleState == PluginLifecycle.error.rawValue {
+                    } else if let existing, existing.enabled,
+                              existing.lifecycleState == PluginLifecycle.error.rawValue,
+                              existing.manifestDigest == fingerprint.manifestDigest,
+                              existing.contentDigest == fingerprint.contentDigest {
                         state.lifecycle = .error
                         state.message = "Repeated execution failures; review and add again to retry"
                     } else if let existing, existing.enabled,

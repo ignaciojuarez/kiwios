@@ -1,4 +1,5 @@
 import Foundation
+import Hummingbird
 
 extension HubRuntime {
     func inspectRemoteReadiness() async -> TailscaleServeState {
@@ -115,6 +116,9 @@ extension HubRuntime {
         }, mutate: { [weak self] mutation, identity, deadline in
             guard let self else { throw CancellationError() }
             return try await self.remoteMutate(mutation, identity: identity, deadline: deadline)
+        }, artifact: { [weak self] token, resource in
+            guard let self else { throw CancellationError() }
+            return try await self.artifactResponse(token: token, resource: resource)
         }, onTermination: { [weak self] in
             await self?.remoteServerTerminated()
         })
@@ -236,6 +240,7 @@ extension HubRuntime {
                 "sidebar": .array(plugin.manifest.ui.sidebar.map { .object([
                     "id": .string($0.id), "label": .string($0.label), "page": .string($0.page)]) }),
                 "missingBrew": .array(missingBrew.map(JSONValue.string)),
+                "sourceRepository": installedRecords[plugin.id]?.sourceRepository.map(JSONValue.string) ?? .null,
                 "canEnableRemotely": .bool(canEnableRemotely),
                 "requiresWebReview": .bool(requiresWebReview),
                 "enableBlocker": enableBlocker.map(JSONValue.string) ?? .null,
@@ -249,6 +254,7 @@ extension HubRuntime {
                     properties[key] = .object([
                         "type": .string(field.type.rawValue), "title": .string(field.title ?? key),
                         "description": field.description.map(JSONValue.string) ?? .null,
+                        "warning": field.warning.map(JSONValue.string) ?? .null,
                         "writeOnly": .bool(field.writeOnly), "required": .bool(field.required),
                         "enumValues": field.writeOnly ? .null : field.enumValues.map(JSONValue.array) ?? .null,
                         "defaultValue": field.writeOnly ? .null : field.defaultValue ?? .null,
@@ -280,11 +286,39 @@ extension HubRuntime {
         let nativeTools = try native.toolsSnapshot.map {
             try Self.remoteNativeTools($0, sshPeerNames: native.peers.map(\.name), encoder: encoder)
         } ?? .null
+        let catalogValues: [JSONValue] = curatedEntries.map { entry in
+            .object([
+                "id": .string(entry.id), "name": .string(entry.name),
+                "description": entry.description.map(JSONValue.string) ?? .null,
+                "repository": .string(entry.repository), "commit": .string(entry.commit),
+                "path": .string(entry.path), "version": .string(entry.version),
+                "kiwiosAPI": .string(entry.kiwiosAPI), "license": .string(entry.license),
+            ])
+        }
+        var searchResults: [JSONValue] = []
+        searchResults.reserveCapacity(pluginSearchResults.count)
+        for result in pluginSearchResults {
+            searchResults.append(.object([
+                "name": .string(result.name), "repository": .string(result.repository),
+                "description": result.description.map(JSONValue.string) ?? .null,
+                "stars": .number(Double(result.stars)),
+                "updatedAt": try Self.wire(result.updatedAt, encoder: encoder),
+                "owner": .string(result.owner),
+            ]))
+        }
         let snapshot: [String: JSONValue] = [
             "api": .string("kiwios.remote/1"), "mode": .string(mode.rawValue),
             "viewer": .object(["loginName": .string(identity.login), "displayName": .string(identity.displayName)]),
             "availability": .string("Available only after the owning Mac user logs in and unlocks FileVault"),
             "plugins": .array(pluginValues), "jobs": .array(jobValues),
+            "installingPluginIDs": .array(pluginTransitions.sorted().map(JSONValue.string)),
+            "catalog": .array(catalogValues),
+            "pluginSearch": .object([
+                "query": .string(pluginSearchQuery),
+                "error": pluginSearchError.map(JSONValue.string) ?? .null,
+                "searchedAt": try pluginSearchSearchedAt.map { try Self.wire($0, encoder: encoder) } ?? .null,
+                "results": .array(searchResults),
+            ]),
             "nativeTools": nativeTools, "nativeToolsRefreshing": .bool(native.toolsRefreshing),
             "layout": try Self.wire(layout, encoder: encoder),
             "settings": .object([
@@ -332,6 +366,8 @@ extension HubRuntime {
         await pruneRemotePluginChallenges()
         remote.challenges = remote.challenges.filter { $0.value.confirmation.expiresAt > Date() }
         remote.nativeChallenges = remote.nativeChallenges.filter { $0.value.expiresAt > Date() }
+        remote.artifactChallenges = remote.artifactChallenges.filter { $0.value.expiresAt > Date() }
+        remote.artifactGrants = remote.artifactGrants.filter { $0.value.expiresAt > Date() }
         switch mutation.operation {
         case .refreshCheck:
             guard let id = mutation.pluginID, let check = mutation.contributionID,
@@ -429,8 +465,41 @@ extension HubRuntime {
             try await approvePluginReview(challenge.review, requestedBy: actor, installBrew: false)
         case .requestPluginInstall:
             guard let repository = mutation.repository else { throw PolicyError.blocked("Missing plugin source") }
+            if let catalogID = mutation.catalogID {
+                guard let commit = mutation.commit, let pluginPath = mutation.pluginPath else {
+                    throw PolicyError.blocked("Catalog install requires commit, pluginPath, and catalogID")
+                }
+                guard let entry = curatedEntries.first(where: { $0.id == catalogID }) else {
+                    throw PolicyError.blocked("Unknown catalog plugin")
+                }
+                guard entry.repository == repository, entry.commit == commit, entry.path == pluginPath else {
+                    throw PolicyError.blocked("Catalog install fields do not match the bundled catalog entry")
+                }
+                return try await stageRemotePluginInstallation(
+                    repository: entry.repository, commit: entry.commit, path: entry.path,
+                    expectedEntry: entry, identity: identity, requestedBy: actor, deadline: deadline)
+            }
             return try await stageRemotePluginInstallation(repository: repository,
                 identity: identity, requestedBy: actor, deadline: deadline)
+        case .searchPlugins:
+            let query = mutation.query ?? ""
+            try deadline.check()
+            do {
+                let results = try await pluginCatalog.search(query)
+                try deadline.check()
+                pluginSearchQuery = query
+                pluginSearchResults = results
+                pluginSearchError = nil
+                pluginSearchSearchedAt = Date()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                pluginSearchQuery = query
+                pluginSearchResults = []
+                pluginSearchError = error.localizedDescription
+                pluginSearchSearchedAt = Date()
+            }
+            return Data("{}".utf8)
         case .requestPluginUpdate:
             guard let id = mutation.pluginID, let record = installedRecords[id],
                   let repository = record.sourceRepository, let update = pluginUpdates[id] else {
@@ -446,7 +515,8 @@ extension HubRuntime {
             }
             remote.installationChallenges.removeValue(forKey: token)
             try deadline.check()
-            try await installRemotelyApprovedPlugin(challenge.review, requestedBy: actor, deadline: deadline)
+            try await installRemotelyApprovedPlugin(
+                challenge.review, missingBrew: challenge.missingBrew, requestedBy: actor, deadline: deadline)
         case .requestPluginRemoval:
             guard let id = mutation.pluginID else { throw PolicyError.blocked("Missing plugin ID") }
             return try await requestRemotePluginRemoval(pluginID: id, identity: identity,
@@ -552,9 +622,150 @@ extension HubRuntime {
             }
             try deadline.check()
             try await enqueueNativeOperation(.deliverNotification(title: title, body: body), requestedBy: actor)
+        case .requestArtifactInstall:
+            return try await requestArtifactInstall(mutation, identity: identity, requestedBy: actor)
+        case .confirmArtifactInstall:
+            return try await confirmArtifactInstall(mutation, identity: identity, requestedBy: actor)
         }
         await refreshResults()
         return try JSONEncoder().encode(JSONValue.object(["ok": .bool(true)]))
+    }
+
+    private func requestArtifactInstall(
+        _ mutation: RemoteMutation, identity: RemoteIdentity, requestedBy: String
+    ) async throws -> Data {
+        guard let pluginID = mutation.pluginID, let artifactID = mutation.artifactID else {
+            throw PolicyError.blocked("Missing install target")
+        }
+        try requireEnabled(pluginID)
+        let item = try await validatedArtifact(pluginID: pluginID, artifactID: artifactID)
+        guard remote.artifactChallenges.count < 8 else {
+            throw PolicyError.blocked("Too many pending install confirmations")
+        }
+        let token = try RemoteSecurity.randomToken()
+        let label = "Install \(item.project) \(item.version) (\(item.build)) on this iPhone?"
+        remote.artifactChallenges[token] = ArtifactInstallChallenge(
+            identity: identity, pluginID: pluginID, artifactID: artifactID, sha256: item.sha256,
+            label: label, expiresAt: Date().addingTimeInterval(60)
+        )
+        try await audit("artifact.confirmation-issued", pluginID: pluginID, requestedBy: requestedBy)
+        return try JSONEncoder().encode(JSONValue.object([
+            "confirmationToken": .string(token),
+            "label": .string(label),
+            "expiresIn": .number(60),
+            "confirmationOperation": .string(RemoteMutation.Operation.confirmArtifactInstall.rawValue),
+            "review": .object([
+                "pluginID": .string(pluginID),
+                "warning": .string(
+                    "Open KiwiOS in iPhone Safari (not the Home Screen web app). iOS will ask to install. Signing and device registration are Apple's. Cleanup can delete this file after you tap; the file is checked again before download."
+                ),
+            ]),
+        ]))
+    }
+
+    private func confirmArtifactInstall(
+        _ mutation: RemoteMutation, identity: RemoteIdentity, requestedBy: String
+    ) async throws -> Data {
+        guard let token = mutation.confirmationToken,
+              let challenge = remote.artifactChallenges.removeValue(forKey: token),
+              challenge.identity == identity, challenge.expiresAt > Date() else {
+            throw PolicyError.blocked("Confirmation expired, consumed, or belongs to another identity")
+        }
+        try requireEnabled(challenge.pluginID)
+        guard let origin = remote.origin else { throw PolicyError.blocked("Remote access is not published") }
+        remote.artifactGrants = remote.artifactGrants.filter { $0.value.expiresAt > Date() }
+        guard remote.artifactGrants.count < ArtifactDelivery.maximumConcurrentGrants else {
+            throw PolicyError.blocked("Too many installs in progress; wait for one to finish")
+        }
+        let item = try await validatedArtifact(pluginID: challenge.pluginID, artifactID: challenge.artifactID)
+        guard item.sha256 == challenge.sha256 else { throw PolicyError.blocked("The IPA changed after you started install") }
+        let grantToken = try RemoteSecurity.randomToken()
+        remote.artifactGrants[grantToken] = ArtifactGrant(
+            pluginID: challenge.pluginID, artifactID: item.id, sha256: item.sha256, size: item.size,
+            fileURL: item.fileURL, bundleID: item.bundleID, version: item.version, title: item.title,
+            expiresAt: Date().addingTimeInterval(ArtifactDelivery.grantLifetime),
+            remainingManifestGets: 5, remainingIPAGets: 5
+        )
+        try await audit("artifact.install-granted", pluginID: challenge.pluginID, requestedBy: requestedBy)
+        return try JSONEncoder().encode(JSONValue.object([
+            "installURL": .string(ArtifactDelivery.encodedInstallURL(origin: origin, token: grantToken)),
+            "guidance": .string("Open KiwiOS in iPhone Safari to finish install. The Home Screen web app cannot start an iOS install."),
+        ]))
+    }
+
+    private struct ValidatedArtifact {
+        let id: String
+        let sha256: String
+        let size: Int64
+        let fileURL: URL
+        let bundleID: String
+        let version: String
+        let title: String
+        let project: String
+        let build: String
+    }
+
+    private func validatedArtifact(pluginID: String, artifactID: String) async throws -> ValidatedArtifact {
+        guard let plugin = loaded[pluginID] else { throw PolicyError.blocked("Unknown plugin") }
+        guard plugin.manifest.depends["native.artifact-delivery"] != nil else {
+            throw PolicyError.blocked("This plugin cannot install builds")
+        }
+        guard let configuration else { throw PolicyError.blocked("Plugin configuration is unavailable") }
+        let snapshot = try await configuration.snapshot(for: plugin)
+        guard case .string(let rawRoot)? = snapshot.values["library_root"] else {
+            throw PolicyError.blocked("Set the build library folder in Configure")
+        }
+        let root = try ArtifactDelivery.libraryRoot(rawRoot, home: FileManager.default.homeDirectoryForCurrentUser.path)
+        let indexURL = runner.pluginDataRoot!.appendingPathComponent(pluginID, isDirectory: true)
+            .appendingPathComponent("index.v1.json")
+        let items = try ArtifactDelivery.loadIndex(at: indexURL)
+        guard let item = items.first(where: { $0.id == artifactID }) else {
+            throw PolicyError.blocked("That build is no longer in the library")
+        }
+        let fileURL = try ArtifactDelivery.revalidate(item, root: root)
+        return ValidatedArtifact(
+            id: item.id, sha256: item.sha256, size: item.size, fileURL: fileURL,
+            bundleID: item.bundleID, version: item.version, title: item.title,
+            project: item.project, build: item.build
+        )
+    }
+
+    func artifactResponse(token: String, resource: String) async throws -> Response {
+        remote.artifactGrants = remote.artifactGrants.filter { $0.value.expiresAt > Date() }
+        guard var grant = remote.artifactGrants[token], grant.expiresAt > Date() else {
+            throw PolicyError.blocked("This install link expired; tap Install again")
+        }
+        let fileURL = try ArtifactDelivery.revalidate(
+            ArtifactDelivery.IndexItem(
+                id: grant.artifactID, status: "valid", relativeDir: grant.fileURL.deletingLastPathComponent().lastPathComponent,
+                ipa: grant.fileURL.lastPathComponent, sha256: grant.sha256, size: grant.size, project: grant.title,
+                title: grant.title, version: grant.version, build: grant.version, bundleID: grant.bundleID,
+                createdAt: ""
+            ),
+            root: grant.fileURL.deletingLastPathComponent().deletingLastPathComponent()
+        )
+        switch resource {
+        case "manifest.plist":
+            guard grant.remainingManifestGets > 0 else { throw PolicyError.blocked("This install link was used too many times") }
+            grant.remainingManifestGets -= 1
+            remote.artifactGrants[token] = grant
+            guard let origin = remote.origin else { throw PolicyError.blocked("Remote access is not published") }
+            let ipa = origin.appending(path: "ota").appending(path: token).appending(path: "app.ipa").absoluteString
+            let data = ArtifactDelivery.manifestPlist(grant: grant, ipaURL: ipa)
+            return ArtifactDelivery.dataResponse(data, contentType: "application/xml")
+        case "app.ipa":
+            guard grant.remainingIPAGets > 0 else { throw PolicyError.blocked("This install link was used too many times") }
+            grant.remainingIPAGets -= 1
+            remote.artifactGrants[token] = grant
+            let digest = try ArtifactDelivery.sha256(of: fileURL)
+            guard digest == grant.sha256 else {
+                remote.artifactGrants.removeValue(forKey: token)
+                throw PolicyError.blocked("The IPA changed; tap Install again")
+            }
+            return ArtifactDelivery.fileResponse(url: fileURL, size: grant.size, contentType: "application/octet-stream")
+        default:
+            throw PolicyError.blocked("Unknown install file")
+        }
     }
 
     private func pruneRemotePluginChallenges() async {
@@ -575,7 +786,8 @@ extension HubRuntime {
     }
 
     private func stageRemotePluginInstallation(
-        repository: String, commit: String? = nil, path: String = ".", identity: RemoteIdentity,
+        repository: String, commit: String? = nil, path: String = ".",
+        expectedEntry: CuratedPluginEntry? = nil, identity: RemoteIdentity,
         requestedBy: String, deadline: RemoteRequestDeadline
     ) async throws -> Data {
         guard let installer, let store else { throw PolicyError.blocked("Plugin installer is unavailable") }
@@ -589,6 +801,13 @@ extension HubRuntime {
         let review = try await installer.stage(repository: repository, commit: revision, pluginPath: path)
         do {
             try deadline.check()
+            if let expectedEntry,
+               review.repository != expectedEntry.repository || review.commit != expectedEntry.commit
+                || review.pluginID != expectedEntry.id || review.version != expectedEntry.version
+                || review.license != expectedEntry.license
+                || review.loadedPlugin.manifest.kiwiosAPI != expectedEntry.kiwiosAPI {
+                throw PolicyError.blocked("The source manifest does not match the reviewed catalog entry")
+            }
             guard !remote.installationChallenges.values.contains(where: { $0.review.pluginID == review.pluginID }) else {
                 throw PolicyError.blocked("A review for this plugin is already staged")
             }
@@ -596,10 +815,13 @@ extension HubRuntime {
                 throw PolicyError.blocked("This plugin ID is bound to a different source; remove it before replacing it")
             }
             let token = try RemoteSecurity.randomToken()
-            let response = try remoteInstallationReviewResponse(review: review, token: token)
+            let missingBrew = review.brew.filter { !BrewFormulaStatus.isInstalled($0) }
+            let response = try remoteInstallationReviewResponse(
+                review: review, missingBrew: missingBrew, token: token, reviewed: expectedEntry != nil)
             try await audit("plugin.installation-review-issued", pluginID: review.pluginID, requestedBy: requestedBy)
             remote.installationChallenges[token] = RemoteInstallationChallenge(
-                identity: identity, review: review, expiresAt: Date().addingTimeInterval(60)
+                identity: identity, review: review, missingBrew: missingBrew,
+                expiresAt: Date().addingTimeInterval(60)
             )
             return response
         } catch {
@@ -634,7 +856,8 @@ extension HubRuntime {
     }
 
     private func installRemotelyApprovedPlugin(
-        _ review: InstallationReview, requestedBy: String, deadline: RemoteRequestDeadline
+        _ review: InstallationReview, missingBrew: [String], requestedBy: String,
+        deadline: RemoteRequestDeadline
     ) async throws {
         guard let installer, let store else { throw PolicyError.blocked("Plugin installer is unavailable") }
         guard !pendingRemovalIDs.contains(review.pluginID), !pluginTransitions.contains(review.pluginID) else {
@@ -670,6 +893,17 @@ extension HubRuntime {
             catch { operationError = "The revision is active, but snapshot cleanup failed: \(error.localizedDescription)" }
             await reload()
             await refreshDoctor()
+            let packages = missingBrew.filter { !BrewFormulaStatus.isInstalled($0) }
+            if !packages.isEmpty {
+                try deadline.check()
+                do {
+                    try await enqueueNativeOperation(
+                        .homebrewInstall(packages: packages), requestedBy: requestedBy,
+                        originPluginID: review.pluginID)
+                } catch {
+                    operationError = "Plugin installed, but Homebrew did not start: \(error.localizedDescription)"
+                }
+            }
         } catch {
             if !activated { await installer.cancel(reviewID: review.id) }
             throw error
@@ -738,21 +972,29 @@ extension HubRuntime {
         await reload()
     }
 
-    private func remoteInstallationReviewResponse(review: InstallationReview, token: String) throws -> Data {
+    private func remoteInstallationReviewResponse(
+        review: InstallationReview, missingBrew: [String], token: String, reviewed: Bool = false
+    ) throws -> Data {
         let dependencies = Dictionary(uniqueKeysWithValues: review.dependencies.map { ($0.key, JSONValue.string($0.value)) })
+        var warning = "This is executable code with the Mac user's access. Disclosures describe intent; they do not sandbox it."
+        if !missingBrew.isEmpty {
+            warning = "KiwiOS will install missing Homebrew formulae locally: \(missingBrew.sorted().joined(separator: ", ")). " + warning
+        }
+        var reviewObject: [String: JSONValue] = [
+            "pluginID": .string(review.pluginID), "name": .string(review.name), "version": .string(review.version),
+            "license": .string(review.license), "repository": .string(review.repository), "commit": .string(review.commit),
+            "pluginPath": .string(review.pluginPath), "manifestDigest": .string(review.manifestDigest),
+            "contentDigest": .string(review.contentDigest), "dependencies": .object(dependencies),
+            "brew": .array(missingBrew.map(JSONValue.string)), "permissions": .array(review.permissions.map(JSONValue.string)),
+            "permissionChanges": .object(["added": .array(review.permissionChanges.added.map(JSONValue.string)),
+                "removed": .array(review.permissionChanges.removed.map(JSONValue.string))]),
+            "warning": .string(warning),
+        ]
+        if reviewed { reviewObject["reviewed"] = .bool(true) }
         let payload: JSONValue = .object([
             "confirmationToken": .string(token), "confirmationOperation": .string(RemoteMutation.Operation.confirmPluginInstall.rawValue),
             "label": .string("Install \(review.name)?"), "expiresIn": .number(60),
-            "review": .object([
-                "pluginID": .string(review.pluginID), "name": .string(review.name), "version": .string(review.version),
-                "license": .string(review.license), "repository": .string(review.repository), "commit": .string(review.commit),
-                "pluginPath": .string(review.pluginPath), "manifestDigest": .string(review.manifestDigest),
-                "contentDigest": .string(review.contentDigest), "dependencies": .object(dependencies),
-                "brew": .array(review.brew.map(JSONValue.string)), "permissions": .array(review.permissions.map(JSONValue.string)),
-                "permissionChanges": .object(["added": .array(review.permissionChanges.added.map(JSONValue.string)),
-                    "removed": .array(review.permissionChanges.removed.map(JSONValue.string))]),
-                "warning": .string("This is executable code with the Mac user's access. Disclosures describe intent; they do not sandbox it."),
-            ]),
+            "review": .object(reviewObject),
         ])
         return try boundedRemoteReview(payload)
     }

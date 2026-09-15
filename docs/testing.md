@@ -37,6 +37,7 @@ Validation never executes plugin code. Installer validation should use local rep
 - Bind only to loopback; reject direct LAN/Funnel configuration and spoofed identity headers.
 - Missing/revoked tailnet identity, ACL denial, Tailscale outage/reconnect, and concurrent browser sessions.
 - CSRF and Origin rejection, escaped plugin text, oversized bodies, slow clients, replayed mutations, and confirmation expiry.
+- Exact `requestPluginInstall` shapes (`{repository}` and `{repository, commit, pluginPath, catalogID}`), rejection of community pins, catalog ID/field mismatch, optional catalog `description`, `searchPlugins` query mapping into `pluginSearch.error` with `searchedAt`, and snapshot `installingPluginIDs`.
 - Failed remote startup must preserve enabled intent for bounded retry; stale listener/monitor completion must not close a newer instance, and cancellation must not interrupt exact-owned Serve cleanup.
 - Installed digests must survive tampered-source reload/disable without accepting those bytes under an approved SHA.
 - PWA phone navigation, typed enum/config values, read-only secret guidance, preservation of unsaved drafts across disconnects, confirmation dismissal after earlier acceptance, and disconnected mutation gating.

@@ -1,5 +1,28 @@
 {
   "$schema": "catalog.schema.json",
   "version": 1,
-  "plugins": []
+  "plugins": [
+    {
+      "id": "ios-build-library",
+      "name": "iOS Builds",
+      "description": "Indexes a staged folder of exported iOS IPA builds and shows valid and invalid entries.",
+      "repository": "https://github.com/ignaciojuarez/kiwios-ios-build-library",
+      "commit": "9931343f1ebed8bcf75d06adca2755d55d4fcf84",
+      "path": ".",
+      "version": "0.1.0",
+      "kiwios_api": "1",
+      "license": "MIT"
+    },
+    {
+      "id": "xcodes",
+      "name": "Xcodes",
+      "description": "Inventory of installed and available Xcodes, simulator runtimes, and devices.",
+      "repository": "https://github.com/ignaciojuarez/kiwios-xcodes",
+      "commit": "ccacd55517a794228cfe2d5216b3e3dfdd22cd76",
+      "path": ".",
+      "version": "0.1.0",
+      "kiwios_api": "1",
+      "license": "MIT"
+    }
+  ]
 }

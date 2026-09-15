@@ -1,0 +1,106 @@
+id = "xcodes"
+name = "Xcodes"
+description = "Inventory of installed and available Xcodes, simulator runtimes, and devices."
+version = "0.1.0"
+kiwios_api = "1"
+license = "MIT"
+brew = ["xcodes"]
+
+[depends]
+"native.jobs" = "1"
+
+[permissions]
+exec = ["plutil", "ruby", "xcode-select", "xcodebuild", "xcodes", "xcrun"]
+read_paths = ["/Applications", "/Library/Developer/CoreSimulator", "~/Library/Application Support/KiwiOS/PluginData/xcodes", "~/Library/Developer/CoreSimulator"]
+write_paths = ["~/Library/Application Support/KiwiOS/PluginData/xcodes"]
+network = ["devimages-cdn.apple.com", "xcodereleases.com"]
+
+[[checks]]
+id = "tool-health"
+label = "Xcodes tool health"
+command = ["./xcodes.rb", "tool-health"]
+timeout = "15s"
+
+[[checks]]
+id = "selected-xcode"
+label = "Selected Xcode"
+command = ["./xcodes.rb", "selected-xcode"]
+timeout = "20s"
+
+[[checks]]
+id = "installed-xcodes"
+label = "Installed Xcodes"
+command = ["./xcodes.rb", "installed-xcodes"]
+timeout = "30s"
+
+[[checks]]
+id = "available-xcodes"
+label = "Available Xcodes"
+command = ["./xcodes.rb", "available-xcodes"]
+timeout = "1m"
+
+[[checks]]
+id = "installed-runtimes"
+label = "Installed simulator runtimes"
+command = ["./xcodes.rb", "installed-runtimes"]
+timeout = "2m"
+
+[[checks]]
+id = "simulator-devices"
+label = "Simulator devices"
+command = ["./xcodes.rb", "simulator-devices"]
+timeout = "2m"
+
+[[checks]]
+id = "available-runtimes"
+label = "Available simulator runtimes"
+command = ["./xcodes.rb", "available-runtimes"]
+timeout = "1m"
+
+[[ui.pages]]
+id = "overview"
+title = "Xcodes"
+kind = "checks"
+source = "checks"
+
+[[ui.pages]]
+id = "installed-xcodes"
+title = "Installed Xcodes"
+kind = "table"
+source = "checks.installed-xcodes"
+
+[[ui.pages]]
+id = "available-xcodes"
+title = "Available Xcodes"
+kind = "table"
+source = "checks.available-xcodes"
+
+[[ui.pages]]
+id = "installed-runtimes"
+title = "Installed Runtimes"
+kind = "table"
+source = "checks.installed-runtimes"
+
+[[ui.pages]]
+id = "simulator-devices"
+title = "Simulator Devices"
+kind = "table"
+source = "checks.simulator-devices"
+
+[[ui.pages]]
+id = "available-runtimes"
+title = "Available Runtimes"
+kind = "table"
+source = "checks.available-runtimes"
+
+[[ui.sidebar]]
+id = "xcodes"
+label = "Xcodes"
+page = "overview"
+
+[[ui.widgets]]
+id = "tool-health"
+title = "Xcodes"
+kind = "stat"
+source = "checks.tool-health"
+size = "1x1"

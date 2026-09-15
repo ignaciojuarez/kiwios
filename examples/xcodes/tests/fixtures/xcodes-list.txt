@@ -1,0 +1,6 @@
+16.4 (16F6)
+16.3 (16E140) (Installed)
+27.0 (27A266a) [Apple Silicon] (Installed, Selected)
+27.1 Beta (27B500) [Universal]
+
+Showing Xcodes for this Mac by default: Apple Silicon (arm64). Switch with `--architecture arm64`.

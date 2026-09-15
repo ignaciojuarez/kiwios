@@ -46,6 +46,7 @@ private struct PluginFormView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(field.title ?? key).fontWeight(.medium)
             if let description = field.description { Text(description).font(.caption).foregroundStyle(.secondary) }
+            if let warning = field.warning { Text(warning).font(.caption).foregroundStyle(Color(red: 1, green: 0.38, blue: 0)) }
             if field.writeOnly {
                 SecureField("Leave blank to keep the current value", text: textBinding(key, field))
                     .disabled(!isSetup)
