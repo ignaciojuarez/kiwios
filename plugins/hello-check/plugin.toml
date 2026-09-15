@@ -1,5 +1,6 @@
 id = "hello-check"
 name = "Hello"
+description = "A minimal example of a KiwiOS plugin check."
 version = "0.1.0"
 kiwios_api = "1"
 license = "MIT"

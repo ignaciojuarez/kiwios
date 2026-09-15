@@ -1,5 +1,6 @@
 id = "volume-health"
 name = "Volume Health"
+description = "Checks mounted volumes for filesystem health and available space."
 version = "0.1.0"
 kiwios_api = "1"
 license = "MIT"

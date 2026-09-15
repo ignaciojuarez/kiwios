@@ -196,6 +196,7 @@ extension HubRuntime {
             throw PolicyError.blocked("Remote access is unavailable")
         }
         try deadline.check()
+        refreshNativeToolsIfNeeded()
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         var pluginValues: [JSONValue] = []
@@ -203,11 +204,18 @@ extension HubRuntime {
             try deadline.check()
             let missingBrew = plugin.manifest.brew.filter { !BrewFormulaStatus.isInstalled($0) }
             let canEnableRemotely = await remoteEnableAvailable(pluginID: plugin.id)
-            let enableBlocker = canEnableRemotely ? await remoteEnableBlocker(pluginID: plugin.id)
-                : plugin.message == "Disabled" ? "Review this source in Attended Setup before enabling it from the web." : plugin.message
+            let requiresWebReview = canEnableRemotely ? !(await remoteEnableIsApproved(pluginID: plugin.id)) : false
+            let enableBlocker = canEnableRemotely ? await remoteEnableBlocker(pluginID: plugin.id) : plugin.message
+            let configSchema = loaded[plugin.id]?.configSchema
+            let canConfigureRemotely = configSchema?.properties.values.contains(where: { $0.writeOnly }) == false
             var value: [String: JSONValue] = [
                 "id": .string(plugin.id), "name": .string(plugin.manifest.name),
+                "description": plugin.manifest.description.map(JSONValue.string) ?? .null,
                 "version": .string(plugin.manifest.version), "lifecycle": .string(plugin.lifecycle.rawValue),
+                "setup": .string(plugin.setupRequirement.rawValue),
+                "configuration": .object([
+                    "available": .bool(configSchema != nil), "remote": .bool(canConfigureRemotely),
+                ]),
                 "message": .string(plugin.message), "results": try Self.wire(plugin.results, encoder: encoder),
                 "resultDates": try Self.wire(plugin.resultDates, encoder: encoder),
                 "liveResults": try Self.wire(plugin.liveResults, encoder: encoder),
@@ -229,9 +237,13 @@ extension HubRuntime {
                     "id": .string($0.id), "label": .string($0.label), "page": .string($0.page)]) }),
                 "missingBrew": .array(missingBrew.map(JSONValue.string)),
                 "canEnableRemotely": .bool(canEnableRemotely),
+                "requiresWebReview": .bool(requiresWebReview),
                 "enableBlocker": enableBlocker.map(JSONValue.string) ?? .null,
+                "update": pluginUpdates[plugin.id].map { .object([
+                    "commit": .string($0.commit), "version": .string($0.version),
+                ]) } ?? .null,
             ]
-            if let schema = loaded[plugin.id]?.configSchema {
+            if let schema = configSchema {
                 var properties: [String: JSONValue] = [:]
                 for (key, field) in schema.properties {
                     properties[key] = .object([
@@ -373,12 +385,59 @@ extension HubRuntime {
         case .enablePlugin:
             guard let id = mutation.pluginID else { throw PolicyError.blocked("Missing plugin ID") }
             try deadline.check()
-            try await enableApprovedPlugin(pluginID: id, requestedBy: actor)
+            if await remoteEnableIsApproved(pluginID: id) {
+                try await enableApprovedPlugin(pluginID: id, requestedBy: actor)
+            } else {
+                return try await stageRemotePluginEnableReview(pluginID: id, identity: identity,
+                    requestedBy: actor, deadline: deadline)
+            }
+        case .requestPluginDependencies:
+            guard let id = mutation.pluginID, let plugin = loaded[id] else {
+                throw PolicyError.blocked("Missing plugin ID")
+            }
+            let packages = try await remoteMissingBrew(pluginID: id)
+            guard !packages.isEmpty else { throw PolicyError.blocked("All declared Homebrew packages are already installed") }
+            let operation = NativeOperation.homebrewInstall(packages: packages)
+            try await validateNativeOperation(operation, requestedBy: actor, originPluginID: id)
+            try deadline.check()
+            guard remote.nativeChallenges.count < 64 else {
+                throw PolicyError.blocked("Too many pending confirmations")
+            }
+            let token = try RemoteSecurity.randomToken()
+            remote.nativeChallenges[token] = RemoteNativeChallenge(identity: identity, operation: operation,
+                expiresAt: Date().addingTimeInterval(60), originPluginID: id)
+            try await audit("plugin.dependencies-confirmation-issued", pluginID: id, requestedBy: actor)
+            return try JSONEncoder().encode(JSONValue.object([
+                "confirmationToken": .string(token),
+                "label": .string(operation.confirmationTitle ?? "Install Homebrew packages?"),
+                "expiresIn": .number(60),
+                "confirmationOperation": .string(RemoteMutation.Operation.confirmNativeOperation.rawValue),
+                "review": .object([
+                    "pluginID": .string(id), "name": .string(plugin.manifest.name),
+                    "brew": .array(packages.sorted().map(JSONValue.string)),
+                    "warning": .string("KiwiOS will run Homebrew locally on this Mac. The exact declared packages are checked again before installation."),
+                ]),
+            ]))
+        case .confirmPluginEnable:
+            guard let token = mutation.confirmationToken,
+                  let challenge = remote.pluginEnableChallenges[token],
+                  challenge.isValid(for: identity) else {
+                throw PolicyError.blocked("Source review expired, was consumed, or belongs to another identity")
+            }
+            remote.pluginEnableChallenges.removeValue(forKey: token)
+            try deadline.check()
+            try await approvePluginReview(challenge.review, requestedBy: actor, installBrew: false)
         case .requestPluginInstall:
-            guard let repository = mutation.repository, let commit = mutation.commit,
-                  let path = mutation.pluginPath else { throw PolicyError.blocked("Missing plugin source") }
-            return try await stageRemotePluginInstallation(repository: repository, commit: commit,
-                path: path, identity: identity, requestedBy: actor, deadline: deadline)
+            guard let repository = mutation.repository else { throw PolicyError.blocked("Missing plugin source") }
+            return try await stageRemotePluginInstallation(repository: repository,
+                identity: identity, requestedBy: actor, deadline: deadline)
+        case .requestPluginUpdate:
+            guard let id = mutation.pluginID, let record = installedRecords[id],
+                  let repository = record.sourceRepository, let update = pluginUpdates[id] else {
+                throw PolicyError.blocked("No plugin update is available")
+            }
+            return try await stageRemotePluginInstallation(repository: repository, commit: update.commit,
+                path: record.sourcePath ?? ".", identity: identity, requestedBy: actor, deadline: deadline)
         case .confirmPluginInstall:
             guard let token = mutation.confirmationToken,
                   let challenge = remote.installationChallenges[token],
@@ -441,7 +500,7 @@ extension HubRuntime {
             }
             let token = try RemoteSecurity.randomToken()
             remote.nativeChallenges[token] = RemoteNativeChallenge(
-                identity: identity, operation: operation, expiresAt: Date().addingTimeInterval(60)
+                identity: identity, operation: operation, expiresAt: Date().addingTimeInterval(60), originPluginID: nil
             )
             try await audit("native.confirmation-issued", pluginID: nil, requestedBy: actor)
             return try JSONEncoder().encode(JSONValue.object([
@@ -462,7 +521,7 @@ extension HubRuntime {
             }
             let token = try RemoteSecurity.randomToken()
             remote.nativeChallenges[token] = RemoteNativeChallenge(
-                identity: identity, operation: operation, expiresAt: Date().addingTimeInterval(60)
+                identity: identity, operation: operation, expiresAt: Date().addingTimeInterval(60), originPluginID: nil
             )
             try await audit("native.confirmation-issued", pluginID: nil, requestedBy: actor)
             return try JSONEncoder().encode(JSONValue.object([
@@ -478,9 +537,11 @@ extension HubRuntime {
             }
             remote.nativeChallenges.removeValue(forKey: token)
             try deadline.check()
-            try await validateNativeOperation(challenge.operation, requestedBy: actor)
+            try await validateNativeOperation(challenge.operation, requestedBy: actor,
+                originPluginID: challenge.originPluginID)
             try deadline.check()
-            try await enqueueNativeOperation(challenge.operation, requestedBy: actor)
+            try await enqueueNativeOperation(challenge.operation, requestedBy: actor,
+                originPluginID: challenge.originPluginID)
         case .probeSSH:
             guard let peerName = mutation.peerName else { throw PolicyError.blocked("Missing SSH peer name") }
             try deadline.check()
@@ -499,6 +560,7 @@ extension HubRuntime {
     private func pruneRemotePluginChallenges() async {
         let now = Date()
         let expired = remote.installationChallenges.filter { $0.value.expiresAt <= now }
+        remote.pluginEnableChallenges = remote.pluginEnableChallenges.filter { $0.value.expiresAt > now }
         remote.installationChallenges = remote.installationChallenges.filter { $0.value.expiresAt > now }
         remote.removalChallenges = remote.removalChallenges.filter { $0.value.expiresAt > now }
         for challenge in expired.values { await installer?.cancel(reviewID: challenge.review.id) }
@@ -506,20 +568,25 @@ extension HubRuntime {
 
     func cancelRemotePluginChallenges() async {
         let staged = remote.installationChallenges.values.map(\.review.id)
+        remote.pluginEnableChallenges.removeAll()
         remote.installationChallenges.removeAll()
         remote.removalChallenges.removeAll()
         for reviewID in staged { await installer?.cancel(reviewID: reviewID) }
     }
 
     private func stageRemotePluginInstallation(
-        repository: String, commit: String, path: String, identity: RemoteIdentity,
+        repository: String, commit: String? = nil, path: String = ".", identity: RemoteIdentity,
         requestedBy: String, deadline: RemoteRequestDeadline
     ) async throws -> Data {
         guard let installer, let store else { throw PolicyError.blocked("Plugin installer is unavailable") }
         guard remote.installationChallenges.count < 4 else {
             throw PolicyError.blocked("Too many staged plugin reviews; confirm or wait for an existing review to expire")
         }
-        let review = try await installer.stage(repository: repository, commit: commit, pluginPath: path)
+        let revision: String
+        if let commit { revision = commit }
+        else { revision = try await installer.latestCommit(repository: repository) }
+        try deadline.check()
+        let review = try await installer.stage(repository: repository, commit: revision, pluginPath: path)
         do {
             try deadline.check()
             guard !remote.installationChallenges.values.contains(where: { $0.review.pluginID == review.pluginID }) else {
@@ -541,6 +608,31 @@ extension HubRuntime {
         }
     }
 
+    private func stageRemotePluginEnableReview(
+        pluginID: String, identity: RemoteIdentity, requestedBy: String,
+        deadline: RemoteRequestDeadline
+    ) async throws -> Data {
+        guard await remoteEnableAvailable(pluginID: pluginID) else {
+            throw PolicyError.blocked("This plugin source is unavailable for web review")
+        }
+        guard remote.pluginEnableChallenges.count < 64 else {
+            throw PolicyError.blocked("Too many pending source reviews")
+        }
+        let review = try await pluginReview(pluginID: pluginID)
+        try deadline.check()
+        guard !remote.pluginEnableChallenges.values.contains(where: { $0.review.pluginID == pluginID }) else {
+            throw PolicyError.blocked("A source review for this plugin is already pending")
+        }
+        let token = try RemoteSecurity.randomToken()
+        let response = try remotePluginEnableReviewResponse(review: review,
+            source: remotePluginReviewSource(pluginID: pluginID), token: token)
+        try await audit("plugin.enable-review-issued", pluginID: pluginID, requestedBy: requestedBy)
+        remote.pluginEnableChallenges[token] = RemotePluginEnableChallenge(
+            identity: identity, review: review, expiresAt: Date().addingTimeInterval(60)
+        )
+        return response
+    }
+
     private func installRemotelyApprovedPlugin(
         _ review: InstallationReview, requestedBy: String, deadline: RemoteRequestDeadline
     ) async throws {
@@ -560,7 +652,8 @@ extension HubRuntime {
             try deadline.check()
             let record = PluginRecord(id: review.pluginID, name: installed.plugin.manifest.name,
                 version: installed.plugin.manifest.version, sourceRepository: installed.repository,
-                sourceCommit: installed.commit, manifestDigest: installed.manifestDigest,
+                sourceCommit: installed.commit, sourcePath: review.pluginPath,
+                manifestDigest: installed.manifestDigest,
                 contentDigest: installed.contentDigest, enabled: true,
                 lifecycleState: PluginLifecycle.needsSetup.rawValue, updatedAt: Date())
             let approval = ApprovalRecord(pluginID: review.pluginID, manifestDigest: installed.manifestDigest,
@@ -568,6 +661,7 @@ extension HubRuntime {
                 sourceRepository: installed.repository, sourceCommit: installed.commit,
                 approvedBy: requestedBy, approvedAt: Date())
             try await store.activateInstalledPlugin(record, approval: approval)
+            pluginUpdates.removeValue(forKey: review.pluginID)
             activated = true
             await queue?.cancelPlugin(review.pluginID, requestedBy: requestedBy)
             await queue?.waitForPluginToStop(review.pluginID)
@@ -661,6 +755,38 @@ extension HubRuntime {
             ]),
         ])
         return try boundedRemoteReview(payload)
+    }
+
+    private func remotePluginEnableReviewResponse(
+        review: PluginReview, source: String, token: String
+    ) throws -> Data {
+        guard let plugin = loaded[review.pluginID] else { throw PolicyError.blocked("Plugin is unavailable") }
+        let dependencies = Dictionary(uniqueKeysWithValues: plugin.manifest.depends.map { ($0.key, JSONValue.string($0.value)) })
+        let payload: JSONValue = .object([
+            "confirmationToken": .string(token),
+            "confirmationOperation": .string(RemoteMutation.Operation.confirmPluginEnable.rawValue),
+            "label": .string("Enable \(review.name)?"), "expiresIn": .number(60),
+            "review": .object([
+                "pluginID": .string(review.pluginID), "name": .string(review.name),
+                "version": .string(review.version), "license": .string(review.license),
+                "source": .string(source), "manifestDigest": .string(review.fingerprint.manifestDigest),
+                "contentDigest": .string(review.fingerprint.contentDigest),
+                "dependencies": .object(dependencies), "brew": .array(plugin.manifest.brew.map(JSONValue.string)),
+                "permissions": .array(review.disclosures.map(JSONValue.string)),
+                "warning": .string("This is executable code with the Mac user's access. Disclosures describe intent; they do not sandbox it."),
+            ]),
+        ])
+        return try boundedRemoteReview(payload)
+    }
+
+    private func remotePluginReviewSource(pluginID: String) -> String {
+        switch loaded[pluginID]?.source {
+        case .bundled: "Bundled with KiwiOS"
+        case .development: "Selected development source"
+        case .direct: "Direct local source"
+        case .installed: "Installed plugin snapshot"
+        case nil: "Plugin source"
+        }
     }
 
     private func remoteRemovalReviewResponse(review: PluginRemovalReview, token: String) throws -> Data {

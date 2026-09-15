@@ -1,12 +1,13 @@
 id = "monitor"
 name = "Monitor"
-version = "0.1.0"
+description = "CPU, memory, thermal pressure, and storage temperatures."
+version = "0.3.0"
 kiwios_api = "1"
 license = "MIT"
-brew = ["smartmontools"]
+brew = ["macmon", "smartmontools"]
 
 [permissions]
-exec = ["awk", "diskutil", "ioreg", "memory_pressure", "plutil", "pmset", "smartctl", "top"]
+exec = ["awk", "diskutil", "ioreg", "macmon", "memory_pressure", "plutil", "pmset", "smartctl", "top"]
 
 [[checks]]
 id = "cpu"
@@ -26,6 +27,20 @@ timeout = "10s"
 id = "thermals"
 label = "Thermal pressure"
 command = ["./monitor.sh", "thermals"]
+every = "1m"
+timeout = "10s"
+
+[[checks]]
+id = "cpu-temperature"
+label = "CPU temperature"
+command = ["./monitor.sh", "cpu-temperature"]
+every = "1m"
+timeout = "10s"
+
+[[checks]]
+id = "gpu-temperature"
+label = "GPU temperature"
+command = ["./monitor.sh", "gpu-temperature"]
 every = "1m"
 timeout = "10s"
 
@@ -65,4 +80,25 @@ id = "memory"
 title = "Memory"
 kind = "stat"
 source = "checks.memory"
+size = "1x1"
+
+[[ui.widgets]]
+id = "cpu-temperature"
+title = "CPU temperature"
+kind = "stat"
+source = "checks.cpu-temperature"
+size = "1x1"
+
+[[ui.widgets]]
+id = "gpu-temperature"
+title = "GPU temperature"
+kind = "stat"
+source = "checks.gpu-temperature"
+size = "1x1"
+
+[[ui.widgets]]
+id = "drive-temperatures"
+title = "Hottest drive"
+kind = "stat"
+source = "checks.drive-temperatures"
 size = "1x1"

@@ -34,6 +34,7 @@ struct PluginRecord: Equatable, Sendable {
     var version: String
     var sourceRepository: String?
     var sourceCommit: String?
+    var sourcePath: String? = nil
     var manifestDigest: String
     var contentDigest: String
     var enabled: Bool
@@ -260,6 +261,10 @@ actor PersistenceStore {
                 $0.add(column: "receiptIdentity", .text)
             }
         }
+        migrator.registerMigration("v6-plugin-source-path") { db in
+            try db.alter(table: "plugins") { $0.add(column: "sourcePath", .text) }
+            try db.execute(sql: "UPDATE plugins SET sourcePath = '.' WHERE sourceCommit IS NOT NULL")
+        }
         return migrator
     }
 
@@ -273,17 +278,18 @@ actor PersistenceStore {
         try await database.write { db in
             try db.execute(sql: """
                 INSERT INTO plugins
-                  (id, name, version, sourceRepository, sourceCommit, manifestDigest, contentDigest,
-                   enabled, lifecycleState, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, name, version, sourceRepository, sourceCommit, sourcePath, manifestDigest,
+                   contentDigest, enabled, lifecycleState, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   name=excluded.name, version=excluded.version,
                   sourceRepository=excluded.sourceRepository, sourceCommit=excluded.sourceCommit,
+                  sourcePath=excluded.sourcePath,
                   manifestDigest=excluded.manifestDigest, contentDigest=excluded.contentDigest,
                   enabled=excluded.enabled, lifecycleState=excluded.lifecycleState,
                   updatedAt=excluded.updatedAt
                 """, arguments: [record.id, record.name, record.version, record.sourceRepository,
-                    record.sourceCommit, record.manifestDigest, record.contentDigest, record.enabled,
+                    record.sourceCommit, record.sourcePath, record.manifestDigest, record.contentDigest, record.enabled,
                     record.lifecycleState, record.updatedAt])
         }
     }
@@ -641,6 +647,7 @@ actor PersistenceStore {
     private static func plugin(_ row: Row) throws -> PluginRecord {
         PluginRecord(id: row["id"], name: row["name"], version: row["version"],
             sourceRepository: row["sourceRepository"], sourceCommit: row["sourceCommit"],
+            sourcePath: row["sourcePath"],
             manifestDigest: row["manifestDigest"], contentDigest: row["contentDigest"],
             enabled: row["enabled"], lifecycleState: row["lifecycleState"], updatedAt: row["updatedAt"])
     }
@@ -682,16 +689,17 @@ actor PersistenceStore {
         try await database.write { db in
             try db.execute(sql: """
                 INSERT INTO plugins
-                  (id, name, version, sourceRepository, sourceCommit, manifestDigest, contentDigest,
-                   enabled, lifecycleState, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, name, version, sourceRepository, sourceCommit, sourcePath, manifestDigest,
+                   contentDigest, enabled, lifecycleState, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   name=excluded.name, version=excluded.version, sourceRepository=excluded.sourceRepository,
-                  sourceCommit=excluded.sourceCommit, manifestDigest=excluded.manifestDigest,
+                  sourceCommit=excluded.sourceCommit, sourcePath=excluded.sourcePath,
+                  manifestDigest=excluded.manifestDigest,
                   contentDigest=excluded.contentDigest, enabled=excluded.enabled,
                   lifecycleState=excluded.lifecycleState, updatedAt=excluded.updatedAt
                 """, arguments: [record.id, record.name, record.version, record.sourceRepository,
-                    record.sourceCommit, record.manifestDigest, record.contentDigest, record.enabled,
+                    record.sourceCommit, record.sourcePath, record.manifestDigest, record.contentDigest, record.enabled,
                     record.lifecycleState, record.updatedAt])
             try db.execute(sql: """
                 INSERT INTO approvals

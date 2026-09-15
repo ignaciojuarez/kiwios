@@ -1,5 +1,6 @@
 id = "watcher"
 name = "Watcher"
+description = "Aggregates the live status of a plugin-managed service."
 version = "0.1.0"
 kiwios_api = "1"
 license = "MIT"

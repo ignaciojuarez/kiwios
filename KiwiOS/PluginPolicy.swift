@@ -15,6 +15,25 @@ enum PluginLifecycle: String, Equatable, Sendable {
     case removing, missingDependency = "missing-dependency", error
 }
 
+enum PluginSetupRequirement: String, Equatable, Sendable {
+    case ready
+    case configurationRequired = "configuration-required"
+    case authorizationRequired = "authorization-required"
+    case attendedSetupRequired = "attended-setup-required"
+    case error
+
+    static func classify(
+        configSchema: PluginConfigSchema?, tcc: [String], doctorIssue: DoctorFinding?, configurationIssue: String?
+    ) -> Self {
+        if configurationIssue != nil {
+            return configSchema?.properties.values.contains(where: { $0.writeOnly }) == true
+                ? .attendedSetupRequired : .configurationRequired
+        }
+        guard let doctorIssue else { return .ready }
+        return tcc.contains(doctorIssue.id) ? .authorizationRequired : .attendedSetupRequired
+    }
+}
+
 enum PolicyError: LocalizedError {
     case blocked(String)
     var errorDescription: String? {

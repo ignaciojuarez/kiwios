@@ -4,6 +4,7 @@ import TOMLDecoder
 struct PluginManifest: Decodable, Equatable, Sendable {
     let id: String
     let name: String
+    let description: String?
     let version: String
     let kiwiosAPI: String
     let license: String
@@ -17,7 +18,7 @@ struct PluginManifest: Decodable, Equatable, Sendable {
     let watch: PluginWatch?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, name, version, license, checks, actions, ui, depends, brew, permissions, config, watch
+        case id, name, description, version, license, checks, actions, ui, depends, brew, permissions, config, watch
         case kiwiosAPI = "kiwios_api"
     }
 
@@ -26,6 +27,7 @@ struct PluginManifest: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
         version = try container.decode(String.self, forKey: .version)
         kiwiosAPI = try container.decode(String.self, forKey: .kiwiosAPI)
         license = try container.decode(String.self, forKey: .license)
@@ -381,6 +383,7 @@ struct PluginLoader {
 
     private func validateDisplayText(_ manifest: PluginManifest) throws {
         var fields = [("name", manifest.name), ("license", manifest.license)]
+        if let description = manifest.description { fields.append(("description", description)) }
         fields += manifest.checks.map { ("checks.\($0.id).label", $0.label) }
         fields += manifest.actions.map { ("actions.\($0.id).label", $0.label) }
         fields += manifest.ui.pages.map { ("ui.pages.\($0.id).title", $0.title) }

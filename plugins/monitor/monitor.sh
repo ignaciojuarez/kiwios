@@ -38,6 +38,31 @@ case "$mode" in
         if [ "$status" = "Nominal" ]; then severity=ok; else severity=warn; fi
         printf '{"t":"%s","msg":"Thermal pressure is %s","state":{"value":"%s","detail":"Reported by macOS power management"}}\n' "$severity" "$status" "$status"
         ;;
+    cpu-temperature|gpu-temperature)
+        case "$mode" in
+            cpu-temperature) sensor=cpu_temp_avg; label=CPU ;;
+            gpu-temperature) sensor=gpu_temp_avg; label=GPU ;;
+        esac
+        macmon=$(command -v macmon || true)
+        if [ -z "$macmon" ]; then
+            printf '%s\n' '{"t":"error","msg":"macmon is missing; install the required package from Plugins"}'
+            exit 2
+        fi
+        data=$($macmon pipe --samples 1 --interval 100 2>/dev/null || true)
+        temperature=$(printf '%s' "$data" | /usr/bin/plutil -extract "temp.$sensor" raw -o - - 2>/dev/null || true)
+        case "$temperature" in
+            ''|*[!0-9.-]*)
+                printf '{"t":"error","msg":"macmon did not report a %s temperature"}\n' "$label"
+                exit 2
+                ;;
+        esac
+        if ! /usr/bin/awk -v temperature="$temperature" 'BEGIN { exit !(temperature >= 10 && temperature <= 125) }'; then
+            printf '{"t":"error","msg":"macmon reported an implausible %s temperature"}\n' "$label"
+            exit 2
+        fi
+        temperature=$(/usr/bin/awk -v temperature="$temperature" 'BEGIN { printf "%.1f", temperature }')
+        printf '{"t":"ok","msg":"%s temperature is %s °C","state":{"value":%s,"unit":"°C","detail":"Average Apple silicon %s sensor temperature"}}\n' "$label" "$temperature" "$temperature" "$label"
+        ;;
     drive-temperatures)
         smartctl=$(command -v smartctl || true)
         if [ -z "$smartctl" ]; then
@@ -80,6 +105,7 @@ case "$mode" in
         rows=
         separator=
         count=0
+        hottest=
         while read -r device option type rest; do
             [ "$option" = "-d" ] || continue
             case "$type" in
@@ -118,6 +144,9 @@ case "$mode" in
             case "$device" in IOService:/*) device=${device##*/} ;; esac
             device=$(printf '%s' "$device" | /usr/bin/awk '{ gsub(/["\\]/, "?"); printf "%s", $0 }')
             count=$((count + 1))
+            if [ -z "$hottest" ] || /usr/bin/awk -v temperature="$temperature" -v hottest="$hottest" 'BEGIN { exit !(temperature > hottest) }'; then
+                hottest=$temperature
+            fi
             row=$(printf '{"id":"drive-%s","model":"%s","device":"%s","temperature-c":%s}' "$count" "$model" "$device" "$temperature")
             rows="${rows}${separator}${row}"
             separator=,
@@ -127,11 +156,13 @@ EOF
         if [ -z "$rows" ]; then
             severity=warn
             message="No readable drive temperatures were reported"
+            state_prefix=''
         else
             severity=ok
             message="Drive temperatures read successfully"
+            state_prefix=$(printf '"value":%s,"unit":"°C","detail":"Hottest readable drive",' "$hottest")
         fi
-        printf '{"t":"%s","msg":"%s","state":{"columns":[{"id":"model","label":"Drive"},{"id":"device","label":"Device"},{"id":"temperature-c","label":"Temperature °C"}],"rows":[%s]}}\n' "$severity" "$message" "$rows"
+        printf '{"t":"%s","msg":"%s","state":{%s"columns":[{"id":"model","label":"Drive"},{"id":"device","label":"Device"},{"id":"temperature-c","label":"Temperature °C"}],"rows":[%s]}}\n' "$severity" "$message" "$state_prefix" "$rows"
         ;;
     *)
         printf '%s\n' '{"t":"error","msg":"Unknown monitor check"}'

@@ -10,6 +10,16 @@ struct NativeToolsState: Sendable {
     var editingPeers = false
 }
 
+enum NativeToolsRefreshPolicy {
+    static let maximumAge: TimeInterval = 5 * 60
+
+    static func needsRefresh(sampledAt: Date?, isRefreshing: Bool, now: Date = Date()) -> Bool {
+        guard !isRefreshing else { return false }
+        guard let sampledAt else { return true }
+        return now.timeIntervalSince(sampledAt) >= maximumAge
+    }
+}
+
 struct RemoteAccessState: Sendable {
     var desired = false
     var enabled = false
@@ -19,6 +29,7 @@ struct RemoteAccessState: Sendable {
     var message = "Remote access is off"
     var challenges: [String: RemoteActionChallenge] = [:]
     var nativeChallenges: [String: RemoteNativeChallenge] = [:]
+    var pluginEnableChallenges: [String: RemotePluginEnableChallenge] = [:]
     var installationChallenges: [String: RemoteInstallationChallenge] = [:]
     var removalChallenges: [String: RemoteRemovalChallenge] = [:]
 }

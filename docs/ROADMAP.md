@@ -67,13 +67,13 @@ Exit remains unverified: after login, a tailnet administrator can inspect status
 
 ## 3 — useful host capabilities
 
-- [x] Implement optional CPU, memory, thermal, and SMART drive-temperature checks as the bundled Monitor plugin; uptime is intentionally omitted.
+- [x] Implement optional CPU, memory, Apple-silicon CPU/GPU-temperature, thermal, and SMART drive-temperature checks as the bundled Monitor plugin; Home includes CPU-temperature, GPU-temperature, and hottest-drive widgets, and uptime is intentionally omitted.
 - [x] Implement bounded process controls, LaunchAgent status, saved SSH peer probes, power checks, and notifications in web Tools, plus an installed formula/cask inventory in web Brew.
 - [x] Require attended setup for prompt-requiring operations and explicit native confirmation where applicable; privileged restart remains unsupported.
 - [x] Add a web Home setup journey derived from Doctor, plugin enablement, launch-at-login, and actual remote availability.
 - [ ] Exercise native services and permission/lifecycle recovery on macOS after Xcode is ready.
 
-Prompt-free, identity-bound operations can run from the PWA. The PWA can also stage immutable plugin source and require a reviewed confirmation, and can remove KiwiOS-owned plugin content without Homebrew mutation when Keychain cleanup remains interaction-disabled. Homebrew mutations, notification authorization, secret creation or updates, and other prompt-capable operations remain in attended setup. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
+Prompt-free, identity-bound operations can run from the PWA. The PWA can also stage immutable plugin source and require a reviewed confirmation, confirm the local install of an approved plugin's exact missing declared formulae, and remove KiwiOS-owned plugin content without Homebrew cleanup when Keychain cleanup remains interaction-disabled. Other Homebrew mutations, notification authorization, secret creation or updates, and other prompt-capable operations remain in attended setup. Network inventory and macOS update management are later capabilities and are not advertised as implemented.
 
 ## 4 — discovery and explicit install
 

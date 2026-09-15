@@ -17,7 +17,10 @@ struct RemoteMutation: Codable, Equatable, Sendable {
         case cancelJob
         case disablePlugin
         case enablePlugin
+        case requestPluginDependencies
+        case confirmPluginEnable
         case requestPluginInstall
+        case requestPluginUpdate
         case confirmPluginInstall
         case requestPluginRemoval
         case confirmPluginRemoval

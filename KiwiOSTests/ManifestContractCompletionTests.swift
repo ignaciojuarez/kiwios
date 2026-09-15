@@ -278,8 +278,11 @@ final class ManifestContractCompletionTests: XCTestCase {
 
     func testRemotePluginLifecycleMutationShapesAreExact() throws {
         let accepted = [
-            #"{"requestID":"00000000-0000-0000-0000-000000000006","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":"."}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000006","operation":"requestPluginInstall","repository":"https://github.com/example/plugin"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000020","operation":"requestPluginUpdate","pluginID":"monitor"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000007","operation":"confirmPluginInstall","confirmationToken":"token"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000018","operation":"requestPluginDependencies","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000016","operation":"confirmPluginEnable","confirmationToken":"token"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000008","operation":"requestPluginRemoval","pluginID":"monitor"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000009","operation":"confirmPluginRemoval","confirmationToken":"token"}"#,
         ]
@@ -289,15 +292,39 @@ final class ManifestContractCompletionTests: XCTestCase {
             _ = try JSONDecoder().decode(RemoteMutation.self, from: data)
         }
         let rejected = [
-            #"{"requestID":"00000000-0000-0000-0000-000000000010","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567"}"#,
-            #"{"requestID":"00000000-0000-0000-0000-000000000011","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":".","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000010","operation":"requestPluginInstall"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000021","operation":"requestPluginUpdate"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000011","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000012","operation":"confirmPluginInstall","confirmationToken":"token","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000017","operation":"confirmPluginEnable","confirmationToken":"token","pluginID":"monitor"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000019","operation":"requestPluginDependencies","pluginID":"monitor","confirmationToken":"token"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000013","operation":"requestPluginRemoval"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000014","operation":"confirmPluginRemoval","confirmationToken":null}"#,
         ]
         for json in rejected {
             XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(json.utf8)))
         }
+    }
+
+    func testPluginUpdaterRequiresAValidHeadAndNewerSemanticVersion() throws {
+        let sha = "0123456789abcdef0123456789abcdef01234567"
+        XCTAssertEqual(try PluginInstaller.parseRemoteHead(Data("\(sha)\tHEAD\n".utf8)), sha)
+        XCTAssertThrowsError(try PluginInstaller.parseRemoteHead(Data("main\tHEAD\n".utf8)))
+        XCTAssertTrue(PluginInstaller.isNewerVersion("1.1.0", than: "1.0.9"))
+        XCTAssertFalse(PluginInstaller.isNewerVersion("1.0.0", than: "1.0.0"))
+        XCTAssertFalse(PluginInstaller.isNewerVersion("1.0.0-beta.1", than: "1.0.0"))
+    }
+
+    func testInstalledPluginSubfolderPersistsForUpdates() async throws {
+        let store = try PersistenceStore(url: directory().appendingPathComponent("state.sqlite"))
+        let record = PluginRecord(id: "nested", name: "Nested", version: "1.0.0",
+            sourceRepository: "https://github.com/example/plugins",
+            sourceCommit: "0123456789abcdef0123456789abcdef01234567",
+            sourcePath: "plugins/nested", manifestDigest: "manifest", contentDigest: "content",
+            enabled: true, lifecycleState: "active", updatedAt: Date())
+        try await store.upsertPlugin(record)
+        let stored = try await store.plugin(id: record.id)
+        XCTAssertEqual(stored?.sourcePath, "plugins/nested")
     }
 
     func testRemotePluginLifecycleRejectsLegacyOperationNames() {
@@ -364,7 +391,8 @@ final class ManifestContractCompletionTests: XCTestCase {
             displayName: "Example", bundleIdentifier: nil, canTerminate: true
         )
         let challenge = RemoteNativeChallenge(
-            identity: owner, operation: .terminateProcess(process), expiresAt: now.addingTimeInterval(60)
+            identity: owner, operation: .terminateProcess(process), expiresAt: now.addingTimeInterval(60),
+            originPluginID: nil
         )
         XCTAssertTrue(challenge.isValid(for: owner, now: now))
         XCTAssertFalse(challenge.isValid(for: other, now: now))
@@ -447,6 +475,34 @@ final class ManifestContractCompletionTests: XCTestCase {
             ManagedHomebrewFormula(name: "smartmontools", receiptIdentity: nil),
             currentReceiptIdentity: "receipt-a"
         ))
+    }
+
+    func testNativeToolsRefreshPolicyUsesAFiveMinuteCache() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(NativeToolsRefreshPolicy.needsRefresh(sampledAt: nil, isRefreshing: false, now: now))
+        XCTAssertFalse(NativeToolsRefreshPolicy.needsRefresh(
+            sampledAt: now.addingTimeInterval(-299), isRefreshing: false, now: now
+        ))
+        XCTAssertTrue(NativeToolsRefreshPolicy.needsRefresh(
+            sampledAt: now.addingTimeInterval(-300), isRefreshing: false, now: now
+        ))
+        XCTAssertFalse(NativeToolsRefreshPolicy.needsRefresh(sampledAt: nil, isRefreshing: true, now: now))
+    }
+
+    func testPluginSetupRequirementSeparatesConfigurationAndAuthorization() {
+        let publicConfig = PluginConfigSchema(title: nil, description: nil, properties: [
+            "endpoint": PluginConfigField(type: .string, title: nil, description: nil,
+                enumValues: nil, defaultValue: nil, writeOnly: false, required: true),
+        ])
+        let secretConfig = PluginConfigSchema(title: nil, description: nil, properties: [
+            "token": PluginConfigField(type: .string, title: nil, description: nil,
+                enumValues: nil, defaultValue: nil, writeOnly: true, required: true),
+        ])
+        let authorization = DoctorFinding(id: "accessibility", title: "Accessibility", status: .blocked, detail: "Grant access")
+        XCTAssertEqual(PluginSetupRequirement.classify(configSchema: publicConfig, tcc: [], doctorIssue: nil, configurationIssue: "Missing endpoint"), .configurationRequired)
+        XCTAssertEqual(PluginSetupRequirement.classify(configSchema: secretConfig, tcc: [], doctorIssue: nil, configurationIssue: "Missing token"), .attendedSetupRequired)
+        XCTAssertEqual(PluginSetupRequirement.classify(configSchema: nil, tcc: ["accessibility"], doctorIssue: authorization, configurationIssue: nil), .authorizationRequired)
+        XCTAssertEqual(PluginSetupRequirement.classify(configSchema: nil, tcc: [], doctorIssue: nil, configurationIssue: nil), .ready)
     }
 
     func testAdmittedNativeGrantRetainsItsApproval() {

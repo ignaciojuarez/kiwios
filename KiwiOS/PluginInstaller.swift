@@ -105,6 +105,11 @@ struct InstalledPlugin: Sendable {
     let contentDigest: String
 }
 
+struct PluginUpdate: Equatable, Sendable {
+    let commit: String
+    let version: String
+}
+
 /// Fetches and inspects source only. Plugin commands are never run by this type.
 actor PluginInstaller {
     typealias ConfigurationValidator = @Sendable (LoadedPlugin) async throws -> Void
@@ -234,6 +239,44 @@ actor PluginInstaller {
             try? FileManager.default.removeItem(at: temporaryRoot)
             throw error
         }
+    }
+
+    func availableUpdate(
+        repository: String, currentCommit: String, pluginPath: String,
+        pluginID: String, currentVersion: String
+    ) async throws -> PluginUpdate? {
+        let commit = try await latestCommit(repository: repository)
+        guard commit != currentCommit.lowercased() else { return nil }
+        let review = try await stage(repository: repository, commit: commit, pluginPath: pluginPath)
+        defer { cancel(reviewID: review.id) }
+        guard review.pluginID == pluginID,
+              Self.isNewerVersion(review.version, than: currentVersion) else { return nil }
+        return PluginUpdate(commit: commit, version: review.version)
+    }
+
+    func latestCommit(repository: String) async throws -> String {
+        let source = try PluginRepositoryIdentity(repository)
+        let output = try await Self.git(["ls-remote", "--exit-code", source.canonical, "HEAD"],
+            in: FileManager.default.temporaryDirectory, outputLimit: 256, timeout: 15)
+        return try Self.parseRemoteHead(output)
+    }
+
+    static func isNewerVersion(_ candidate: String, than current: String) -> Bool {
+        guard let candidate = SemanticVersion(candidate), let current = SemanticVersion(current) else { return false }
+        return candidate > current
+    }
+
+    static func parseRemoteHead(_ data: Data) throws -> String {
+        let fields = String(decoding: data, as: UTF8.self).split(whereSeparator: \Character.isWhitespace)
+        guard fields.count == 2, fields[1] == "HEAD" else {
+            throw PluginInstallerError.gitFailed("invalid HEAD response")
+        }
+        let commit = fields[0].lowercased()
+        guard commit.count == 40,
+              commit.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "0123456789abcdef").contains($0) }) else {
+            throw PluginInstallerError.gitFailed("invalid HEAD revision")
+        }
+        return commit
     }
 
     /// Call only after the user explicitly approves the corresponding review.

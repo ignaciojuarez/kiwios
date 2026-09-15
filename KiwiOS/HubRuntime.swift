@@ -6,6 +6,7 @@ struct PluginState: Identifiable, Equatable, Sendable {
     let manifest: PluginManifest
     var message = "Review source and disclosures before adding"
     var lifecycle: PluginLifecycle = .installed
+    var setupRequirement: PluginSetupRequirement = .ready
     var results: [String: WatchRunResult] = [:]
     var resultDates: [String: Date] = [:]
     var liveResults: [String: WatchLiveSnapshot] = [:]
@@ -53,6 +54,7 @@ final class HubRuntime: ObservableObject {
     var startup: Task<Void, Never>?
     var refreshTask: Task<Void, Never>?
     var doctorTask: Task<Void, Never>?
+    var pluginUpdateTask: Task<Void, Never>?
     var remoteRetryTask: Task<Void, Never>?
     var doctorRevision = 0
     var modeTransitioning = false
@@ -67,6 +69,7 @@ final class HubRuntime: ObservableObject {
     var confirmationGrants: [UUID: ActionConfirmation] = [:]
     var consecutiveFailures: [String: Int] = [:]
     var installedRecords: [String: PluginRecord] = [:]
+    var pluginUpdates: [String: PluginUpdate] = [:]
     let nativeCapabilities = NativeCapabilities()
     let tailscaleService: TailscaleService
     let remoteServer: RemoteServer
@@ -166,6 +169,7 @@ final class HubRuntime: ObservableObject {
             pendingRemovalIDs = Set(try await store.pendingPluginRemovals().map(\.pluginID))
             let storedPlugins = try await store.plugins()
             installedRecords = Dictionary(uniqueKeysWithValues: storedPlugins.filter { $0.sourceCommit != nil }.map { ($0.id, $0) })
+            pluginUpdates = pluginUpdates.filter { installedRecords[$0.key] != nil }
             var sourceErrors: [String] = []
             let installedRoots = installedRecords.values.compactMap { record -> URL? in
                 guard !pendingRemovalIDs.contains(record.id) else { return nil }
@@ -240,6 +244,7 @@ final class HubRuntime: ObservableObject {
                             enabled: enabledIntent, lifecycle: .missingDependency))
                     }
                 }
+                if state.lifecycle == .error { state.setupRequirement = .error }
                 plugins.append(state)
             }
             try Task.checkCancellation()
@@ -289,37 +294,32 @@ final class HubRuntime: ObservableObject {
 
     func requestEnable(pluginID: String) async {
         await waitUntilReady()
-        guard let plugin = loaded[pluginID], let store, !pendingRemovalIDs.contains(pluginID) else { return }
         do {
-            let fingerprint = try await Task.detached { try PluginFingerprint.read(root: plugin.rootURL) }.value
-            if plugin.source == .installed, let installed = installedRecords[pluginID],
-               installed.manifestDigest != fingerprint.manifestDigest || installed.contentDigest != fingerprint.contentDigest {
-                throw PolicyError.blocked("The installed snapshot changed. Remove it in Discover, then install and review the exact revision again")
-            }
-            if let existing = try await store.plugin(id: pluginID), !sourceMatches(existing, plugin: plugin, fingerprint: fingerprint) {
-                throw PolicyError.blocked("Source conflict: a plugin ID cannot silently move to another directory")
-            }
-            pendingReview = PluginReview(pluginID: pluginID, name: plugin.manifest.name,
-                version: plugin.manifest.version, license: plugin.manifest.license,
-                fingerprint: fingerprint, disclosures: plugin.manifest.permissions.disclosureLines)
+            pendingReview = try await pluginReview(pluginID: pluginID)
         } catch { operationError = error.localizedDescription }
+    }
+
+    func pluginReview(pluginID: String) async throws -> PluginReview {
+        guard let plugin = loaded[pluginID], let store, !pendingRemovalIDs.contains(pluginID) else {
+            throw PolicyError.blocked("Plugin is unavailable")
+        }
+        let fingerprint = try await Task.detached { try PluginFingerprint.read(root: plugin.rootURL) }.value
+        if plugin.source == .installed, let installed = installedRecords[pluginID],
+           installed.manifestDigest != fingerprint.manifestDigest || installed.contentDigest != fingerprint.contentDigest {
+            throw PolicyError.blocked("The installed snapshot changed. Remove it in Discover, then install and review the exact revision again")
+        }
+        if let existing = try await store.plugin(id: pluginID), !sourceMatches(existing, plugin: plugin, fingerprint: fingerprint) {
+            throw PolicyError.blocked("Source conflict: a plugin ID cannot silently move to another directory")
+        }
+        return PluginReview(pluginID: pluginID, name: plugin.manifest.name,
+            version: plugin.manifest.version, license: plugin.manifest.license,
+            fingerprint: fingerprint, disclosures: plugin.manifest.permissions.disclosureLines)
     }
 
     /// Browser callers can restore only source that was already approved locally and has not changed.
     func remoteEnablePrerequisites(pluginID: String) async throws -> [String] {
-        guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store,
-              !pendingRemovalIDs.contains(pluginID),
-              let state = plugins.first(where: { $0.id == pluginID }), [.disabled, .error].contains(state.lifecycle),
-              let record = try await store.plugin(id: pluginID),
-              (!record.enabled || state.lifecycle == .error),
-              record.manifestDigest == fingerprint.manifestDigest,
-              record.contentDigest == fingerprint.contentDigest,
-              sourceMatches(record, plugin: plugin, fingerprint: fingerprint),
-              try await store.hasApproval(pluginID: pluginID, manifestDigest: fingerprint.manifestDigest,
-                  contentDigest: fingerprint.contentDigest, disclosureDigest: fingerprint.manifestDigest,
-                  sourceRepository: approvalSourceIdentity(for: plugin, fingerprint: fingerprint),
-                  sourceCommit: installedRecords[pluginID]?.sourceCommit) else {
-            throw PolicyError.blocked("Enable unchanged, previously approved plugins from the web; review new or changed code in Attended Setup")
+        guard await remoteEnableIsApproved(pluginID: pluginID), let plugin = loaded[pluginID] else {
+            throw PolicyError.blocked("Review this source from the web before enabling it")
         }
         if let reason = dependencyBlock(pluginID) { throw PolicyError.blocked(reason) }
         let checks = await Task.detached { PluginDoctor().inspect(plugin.manifest) }.value
@@ -330,7 +330,7 @@ final class HubRuntime: ObservableObject {
         return plugin.manifest.brew.filter { !BrewFormulaStatus.isInstalled($0) }
     }
 
-    func remoteEnableAvailable(pluginID: String) async -> Bool {
+    func remoteEnableIsApproved(pluginID: String) async -> Bool {
         guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store,
               !pendingRemovalIDs.contains(pluginID),
               let state = plugins.first(where: { $0.id == pluginID }), [.disabled, .error].contains(state.lifecycle),
@@ -345,10 +345,42 @@ final class HubRuntime: ObservableObject {
             sourceCommit: installedRecords[pluginID]?.sourceCommit)) == true
     }
 
+    func remoteEnableAvailable(pluginID: String) async -> Bool {
+        guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store,
+              !pendingRemovalIDs.contains(pluginID),
+              let state = plugins.first(where: { $0.id == pluginID }), [.installed, .disabled, .error].contains(state.lifecycle) else {
+            return false
+        }
+        if plugin.source == .installed, let installed = installedRecords[pluginID],
+           installed.manifestDigest != fingerprint.manifestDigest || installed.contentDigest != fingerprint.contentDigest {
+            return false
+        }
+        guard let record = try? await store.plugin(id: pluginID) else { return true }
+        return sourceMatches(record, plugin: plugin, fingerprint: fingerprint)
+    }
+
     func remoteEnableBlocker(pluginID: String) async -> String? {
         guard let plugin = loaded[pluginID] else { return "Plugin source is unavailable" }
         let checks = await Task.detached { PluginDoctor().inspect(plugin.manifest) }.value
         return checks.first(where: { !$0.id.hasPrefix("brew-") && $0.status != .passed })?.detail
+    }
+
+    func remoteMissingBrew(pluginID: String) async throws -> [String] {
+        guard let plugin = loaded[pluginID], let fingerprint = fingerprints[pluginID], let store,
+              !pendingRemovalIDs.contains(pluginID),
+              let state = plugins.first(where: { $0.id == pluginID }),
+              [.needsSetup, .disabled, .error].contains(state.lifecycle),
+              let record = try await store.plugin(id: pluginID),
+              record.manifestDigest == fingerprint.manifestDigest,
+              record.contentDigest == fingerprint.contentDigest,
+              sourceMatches(record, plugin: plugin, fingerprint: fingerprint),
+              try await store.hasApproval(pluginID: pluginID, manifestDigest: fingerprint.manifestDigest,
+                  contentDigest: fingerprint.contentDigest, disclosureDigest: fingerprint.manifestDigest,
+                  sourceRepository: approvalSourceIdentity(for: plugin, fingerprint: fingerprint),
+                  sourceCommit: installedRecords[pluginID]?.sourceCommit) else {
+            throw PolicyError.blocked("Review the current plugin source before installing its dependencies")
+        }
+        return plugin.manifest.brew.filter { !BrewFormulaStatus.isInstalled($0) }
     }
 
     func enableApprovedPlugin(pluginID: String, requestedBy: String) async throws {
@@ -367,37 +399,43 @@ final class HubRuntime: ObservableObject {
     }
 
     func approvePlugin(_ review: PluginReview) async {
-        guard pendingReview?.id == review.id, pendingReview?.fingerprint == review.fingerprint,
-              let plugin = loaded[review.pluginID], let store else { return }
+        guard pendingReview?.id == review.id, pendingReview?.fingerprint == review.fingerprint else { return }
         pendingReview = nil
         do {
-            let fresh = try await Task.detached { () throws -> PluginFingerprint in
-                let validated = try PluginLoader().load(from: plugin.rootURL)
-                guard validated.manifest == plugin.manifest else { throw PolicyError.blocked("Manifest changed; reload plugins before approval") }
-                return try PluginFingerprint.read(root: plugin.rootURL)
-            }.value
-            guard fresh == review.fingerprint else { throw PolicyError.blocked("Source changed during review; inspect it again") }
-            if let reason = dependencyBlock(plugin.manifest.id) { throw PolicyError.blocked(reason) }
-            if mode == .remote {
-                let findings = await Task.detached { PluginDoctor().inspect(plugin.manifest) }.value
-                guard findings.allSatisfy({ $0.status == .passed }) else {
-                    throw PolicyError.blocked("Plugin enablement requires completed Doctor checks in remote mode")
-                }
-                _ = try await configuration?.prepare(plugin)
-            }
-            // Keep execution blocked until Doctor and configuration have both passed.
-            try await store.upsertPlugin(record(for: plugin, fingerprint: fresh, enabled: true, lifecycle: .needsSetup))
-            try await store.recordApproval(ApprovalRecord(pluginID: review.pluginID, manifestDigest: fresh.manifestDigest,
-                contentDigest: fresh.contentDigest, disclosureDigest: fresh.manifestDigest,
-                sourceRepository: sourceIdentity(for: plugin, fingerprint: fresh), sourceCommit: installedRecords[plugin.manifest.id]?.sourceCommit, approvedBy: "local", approvedAt: Date()))
-            try await audit("plugin.approved", pluginID: review.pluginID)
-            fingerprints[review.pluginID] = fresh
-            consecutiveFailures = consecutiveFailures.filter { !$0.key.hasPrefix(review.pluginID + "/") }
-            setLifecycle(review.pluginID, .needsSetup, "Checking setup prerequisites")
-            await refreshDoctor()
-            requestBrewInstallation(packages: plugin.manifest.brew, pluginID: review.pluginID)
-            if plugins.first(where: { $0.id == review.pluginID })?.lifecycle == .active { await startChecks(review.pluginID) }
+            try await approvePluginReview(review, requestedBy: "local", installBrew: true)
         } catch { operationError = error.localizedDescription }
+    }
+
+    func approvePluginReview(
+        _ review: PluginReview, requestedBy: String, installBrew: Bool
+    ) async throws {
+        guard let plugin = loaded[review.pluginID], let store else {
+            throw PolicyError.blocked("Plugin is unavailable")
+        }
+        let fresh = try await Task.detached { () throws -> PluginFingerprint in
+            let validated = try PluginLoader().load(from: plugin.rootURL)
+            guard validated.manifest == plugin.manifest else {
+                throw PolicyError.blocked("Manifest changed; reload plugins before approval")
+            }
+            return try PluginFingerprint.read(root: plugin.rootURL)
+        }.value
+        guard fresh == review.fingerprint else { throw PolicyError.blocked("Source changed during review; inspect it again") }
+        if let reason = dependencyBlock(plugin.manifest.id) { throw PolicyError.blocked(reason) }
+        // Keep execution blocked until Doctor and configuration have both passed. Remote review only
+        // approves this exact source; it must never initiate package or macOS permission prompts.
+        try await store.upsertPlugin(record(for: plugin, fingerprint: fresh, enabled: true, lifecycle: .needsSetup))
+        try await store.recordApproval(ApprovalRecord(pluginID: review.pluginID, manifestDigest: fresh.manifestDigest,
+            contentDigest: fresh.contentDigest, disclosureDigest: fresh.manifestDigest,
+            sourceRepository: sourceIdentity(for: plugin, fingerprint: fresh),
+            sourceCommit: installedRecords[plugin.manifest.id]?.sourceCommit,
+            approvedBy: requestedBy, approvedAt: Date()))
+        try await audit("plugin.approved", pluginID: review.pluginID, requestedBy: requestedBy)
+        fingerprints[review.pluginID] = fresh
+        consecutiveFailures = consecutiveFailures.filter { !$0.key.hasPrefix(review.pluginID + "/") }
+        setLifecycle(review.pluginID, .needsSetup, "Checking setup prerequisites")
+        await refreshDoctor()
+        if installBrew { requestBrewInstallation(packages: plugin.manifest.brew, pluginID: review.pluginID) }
+        if plugins.first(where: { $0.id == review.pluginID })?.lifecycle == .active { await startChecks(review.pluginID) }
     }
 
     func disable(pluginID: String, requestedBy: String = "local") async {
@@ -832,11 +870,13 @@ final class HubRuntime: ObservableObject {
                 if dependencyBlock(id) != nil { continue }
                 remaining.removeAll { $0 == id }
                 let checks = await Task.detached { PluginDoctor().inspect(plugin.manifest) }.value
-                var issue = checks.first(where: { $0.status != .passed })?.detail
-                if issue == nil {
+                let doctorIssue = checks.first(where: { $0.status != .passed })
+                var configurationIssue: String?
+                if doctorIssue == nil {
                     do { _ = try await configuration?.prepare(plugin) }
-                    catch { issue = error.localizedDescription }
+                    catch { configurationIssue = error.localizedDescription }
                 }
+                let issue = doctorIssue?.detail ?? configurationIssue
                 guard !stopped, generation == stateGeneration,
                       let current = plugins.first(where: { $0.id == id }), current.lifecycle == state.lifecycle,
                       lifecycleVersions[id, default: 0] == lifecycleVersion else { continue }
@@ -850,6 +890,9 @@ final class HubRuntime: ObservableObject {
                 if let issue {
                     findings.append(DoctorFinding(id: "\(id)/setup", title: plugin.manifest.name, status: .blocked, detail: issue))
                     setLifecycle(id, .needsSetup, issue)
+                    setSetupRequirement(id, setupRequirement(
+                        for: plugin, doctorIssue: doctorIssue, configurationIssue: configurationIssue
+                    ))
                     await stopChecks(id)
                 } else {
                     setLifecycle(id, .active, "Setup complete")
@@ -912,6 +955,7 @@ final class HubRuntime: ObservableObject {
         stateGeneration += 1
         startup?.cancel()
         doctorTask?.cancel()
+        pluginUpdateTask?.cancel()
         remoteRetryTask?.cancel()
         nativeGrants.removeAll()
         nativeOperationOrigins.removeAll()
@@ -922,6 +966,7 @@ final class HubRuntime: ObservableObject {
         refreshTask?.cancel()
         await startup?.value
         await doctorTask?.value
+        await pluginUpdateTask?.value
         await remoteRetryTask?.value
         // Initialization cannot create new tasks after these final cancellation/drain steps.
         refreshTask?.cancel()
@@ -996,7 +1041,8 @@ final class HubRuntime: ObservableObject {
             return installed
         }
         return PluginRecord(id: plugin.manifest.id, name: plugin.manifest.name, version: plugin.manifest.version,
-            sourceRepository: sourceIdentity(for: plugin, fingerprint: fingerprint), sourceCommit: nil, manifestDigest: fingerprint.manifestDigest,
+            sourceRepository: sourceIdentity(for: plugin, fingerprint: fingerprint), sourceCommit: nil,
+            sourcePath: nil, manifestDigest: fingerprint.manifestDigest,
             contentDigest: fingerprint.contentDigest, enabled: enabled, lifecycleState: lifecycle.rawValue, updatedAt: Date())
     }
     func audit(_ event: String, pluginID: String?, requestedBy: String = "local") async throws {
@@ -1007,6 +1053,22 @@ final class HubRuntime: ObservableObject {
         lifecycleVersions[id, default: 0] += 1
         guard let index = plugins.firstIndex(where: { $0.id == id }) else { return }
         plugins[index].lifecycle = lifecycle; plugins[index].message = message
+        if lifecycle == .active { plugins[index].setupRequirement = .ready }
+        if lifecycle == .error { plugins[index].setupRequirement = .error }
+    }
+
+    func setSetupRequirement(_ id: String, _ requirement: PluginSetupRequirement) {
+        guard let index = plugins.firstIndex(where: { $0.id == id }) else { return }
+        plugins[index].setupRequirement = requirement
+    }
+
+    func setupRequirement(
+        for plugin: LoadedPlugin, doctorIssue: DoctorFinding?, configurationIssue: String?
+    ) -> PluginSetupRequirement {
+        PluginSetupRequirement.classify(
+            configSchema: plugin.configSchema, tcc: plugin.manifest.permissions.tcc,
+            doctorIssue: doctorIssue, configurationIssue: configurationIssue
+        )
     }
     func update(_ id: String, message: String) {
         guard let index = plugins.firstIndex(where: { $0.id == id }) else { return }

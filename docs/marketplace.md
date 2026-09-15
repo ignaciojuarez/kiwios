@@ -4,7 +4,7 @@ KiwiOS uses GitHub for immutable plugin source. It does not host packages or ope
 
 ## Two discovery levels
 
-1. **Community discovery:** cached GitHub search support exists for the `kiwios-plugin` topic, but the web-primary product does not expose search yet. Installation starts from an operator-supplied canonical repository, exact commit, and subfolder in either the PWA or attended setup.
+1. **Community discovery:** cached GitHub search support exists for the `kiwios-plugin` topic, but the web-primary product does not expose search yet. PWA installation starts from an operator-supplied canonical GitHub repository URL; KiwiOS resolves its current `HEAD` to an immutable commit and uses the repository root as the plugin source. Attended setup retains the explicit commit and subfolder workflow for catalog and author tooling.
 2. **Curated catalog:** KiwiOS reads a bundled, read-only catalog containing metadata for approved exact commits. Catalog inclusion means the manifest, source, license, and basic behavior were reviewed at that SHA. It is not a warranty, security certification, or automatic-update channel. The catalog in the current build has no approved entries; publishing and maintaining it as an external repository remains future operational work.
 
 A catalog entry contains:
@@ -30,15 +30,15 @@ When web discovery is added, reviewed commits must remain visually distinct from
 
 ## Install
 
-The API 1 installer supports bundled plugins, an explicitly selected local development directory, and installation from a repository plus exact commit. The repository install flow:
+The API 1 installer supports bundled plugins, an explicitly selected local development directory, and installation from a GitHub repository. The PWA resolves the supplied repository URL to an exact commit before the repository install flow:
 
-1. accepts only a normalized GitHub HTTPS repository identity and a full commit SHA, then fetches that object into a fresh temporary bare repository with hooks and recursive submodules disabled;
+1. accepts only a normalized GitHub HTTPS repository identity and the resolved full commit SHA, then fetches that object into a fresh temporary bare repository with hooks and recursive submodules disabled;
 2. inspects the Git tree before extraction, rejecting submodules, symlinks, unsupported modes, path traversal, Unicode/case-fold collisions, excessive file count or size, and a plugin path outside the tree;
 3. exports regular files into a fresh staging directory without following links and runs the single manifest validator;
 4. shows repository identity, commit, manifest/content digest, license, dependencies, disclosed permissions, and disclosure changes in a bounded review;
 5. requires explicit trust and records those exact approval fields. In the PWA, the review is bound to the verified tailnet identity, expires after 60 seconds, and is consumed once;
 6. copies the staged snapshot atomically into `InstalledPlugins/<id>/<commit>` and verifies it again before launch;
-7. enables it only after dependencies and attended-setup prerequisites pass. The web flow never installs declared Homebrew formulae; those remain a separate local confirmation.
+7. records it as enabled and begins readiness checks. The web can separately confirm only that approved plugin's currently missing declared formulae and queue the local Homebrew install; it never opens a system prompt.
 
 The development directory is never treated as curated. Changes there are revalidated and require reapproval when their manifest disclosure changes.
 
@@ -46,7 +46,7 @@ An approved plugin ID is bound to its source repository. The same ID from anothe
 
 ## Updates and removal
 
-KiwiOS may report that the catalog contains a newer approved SHA, but it never activates one automatically. Updating repeats validation and trust review, preserves plugin data/config, and atomically switches versions only after the new version is ready. The PWA accepts only the same canonical repository, a full SHA, and a safe subfolder; its staged metadata/digest review is identity-bound, one-use, and 60 seconds long. New admission for that plugin is gated during the switch; old execution is canceled and drained before old files are pruned. A failed activation leaves the old revision selected and its checks recoverable. After successful activation, KiwiOS retains only the active revision; startup also removes inactive snapshots and abandoned incoming directories. Git remains the source of recovery.
+For installed GitHub plugins, KiwiOS checks the repository's default-branch `HEAD` every 15 minutes. It offers Update only when that immutable commit contains the same plugin ID at the recorded subfolder and its manifest has a newer semantic version; unrelated repository commits and version downgrades are ignored. KiwiOS never activates an update automatically. Updating repeats validation and trust review, preserves plugin data/config, and atomically switches versions only after the new version is ready. The PWA stages the detected SHA using the same canonical repository and safe subfolder; its metadata/digest review is identity-bound, one-use, and 60 seconds long. New admission for that plugin is gated during the switch; old execution is canceled and drained before old files are pruned. A failed activation leaves the old revision selected and its checks recoverable. After successful activation, KiwiOS retains only the active revision; startup also removes inactive snapshots and abandoned incoming directories. Git remains the source of recovery.
 
 Remove closes admission, disables the plugin and affected dependents, and waits for process teardown. Before deleting files it records a durable pending-removal entry. Cleanup removes approvals, config, owned write-only Keychain fields, data, results, internal job and audit records, layout contributions, and KiwiOS-installed code. Bundled app resources and a user-owned development source are not deleted; they return to the Not added state. Failed cleanup keeps the entry for retry at startup; a missing or invalid source tree does not prevent removal. Pending removals cannot be added or configured.
 

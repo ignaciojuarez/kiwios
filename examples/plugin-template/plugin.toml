@@ -1,5 +1,6 @@
 id = "author.sample"
 name = "Sample Plugin"
+description = "A short summary shown on the Plugins card."
 version = "0.1.0"
 kiwios_api = "1"
 license = "MIT"
