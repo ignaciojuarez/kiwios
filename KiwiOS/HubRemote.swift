@@ -62,10 +62,10 @@ extension HubRuntime {
             guard desired else { return }
             if let data = try await store.layout(key: "remote-trust"),
                let trust = try? JSONDecoder().decode(ManagedServeTrust.self, from: data),
-               (try? await tailscaleService.validate(trust)) == true {
-                let plan = try await tailscaleService.restore(trust)
-                try await startRemoteServer(plan: plan)
-                try await activateRemoteServer(trust)
+               let restoredTrust = try? await tailscaleService.restore(trust) {
+                try await store.setLayout(key: "remote-trust", json: JSONEncoder().encode(restoredTrust))
+                try await startRemoteServer(plan: .init(origin: restoredTrust.origin))
+                try await activateRemoteServer(restoredTrust)
             } else {
                 // Bind loopback first, then journal before publishing Serve.
                 let plan = try await tailscaleService.prepare()

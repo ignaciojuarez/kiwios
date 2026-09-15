@@ -1011,17 +1011,58 @@ final class TailscaleServiceTests: XCTestCase {
         XCTAssertEqual(state.status, .available(origin: plan.origin))
         XCTAssertEqual(mutationCount, 2)
     }
+
+    func testLifecycleCoexistsWithUnrelatedFunnel() async throws {
+        let backend = FakeTailscaleBackend(hasUnrelatedFunnel: true)
+        let service = TailscaleService(executable: URL(fileURLWithPath: "/bin/sh")) {
+            _, arguments in try await backend.run(arguments)
+        }
+
+        let plan = try await service.prepare()
+        let trust = try await service.start(plan: plan)
+        let valid = try await service.validate(trust)
+        XCTAssertTrue(valid)
+        try await service.stop()
+
+        let state = await service.inspect()
+        let funnelRemainsConfigured = await backend.unrelatedFunnelIsConfigured
+        XCTAssertEqual(state.status, .available(origin: plan.origin))
+        XCTAssertTrue(funnelRemainsConfigured)
+    }
+
+    func testFunnelOnKiwiOSPortRemainsAConflict() async {
+        let backend = FakeTailscaleBackend(hasConflictingFunnel: true)
+        let service = TailscaleService(executable: URL(fileURLWithPath: "/bin/sh")) {
+            _, arguments in try await backend.run(arguments)
+        }
+
+        do {
+            _ = try await service.prepare()
+            XCTFail("Expected port conflict")
+        } catch let error as TailscaleServiceError {
+            guard case .managedPortConfigured = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
 }
 
 private actor FakeTailscaleBackend {
     private let backendState: String
     private let certDomains: [String]
+    private let hasUnrelatedFunnel: Bool
+    private let hasConflictingFunnel: Bool
     private var configured = false
     private(set) var mutationCount = 0
 
-    init(backendState: String = "Running", certDomains: [String] = ["kiwi.example.ts.net"]) {
+    init(backendState: String = "Running", certDomains: [String] = ["kiwi.example.ts.net"],
+         hasUnrelatedFunnel: Bool = false, hasConflictingFunnel: Bool = false) {
         self.backendState = backendState
         self.certDomains = certDomains
+        self.hasUnrelatedFunnel = hasUnrelatedFunnel
+        self.hasConflictingFunnel = hasConflictingFunnel
     }
 
     func run(_ arguments: [String]) throws -> Data {
@@ -1035,14 +1076,30 @@ private actor FakeTailscaleBackend {
             ])
         }
         if arguments == ["serve", "status", "--json"] {
-            return try JSONSerialization.data(withJSONObject: configured ? [
-                "TCP": ["443": ["HTTPS": true]],
-                "Web": [
+            var configuration: [String: Any] = [:]
+            if configured {
+                configuration["TCP"] = ["443": ["HTTPS": true]]
+                configuration["Web"] = [
                     "kiwi.example.ts.net:443": [
                         "Handlers": ["/": ["Proxy": "http://127.0.0.1:31928"]],
                     ],
-                ],
-            ] : [:])
+                ]
+            }
+            if hasUnrelatedFunnel {
+                var tcp = configuration["TCP"] as? [String: Any] ?? [:]
+                tcp["8443"] = ["HTTPS": true]
+                configuration["TCP"] = tcp
+                var web = configuration["Web"] as? [String: Any] ?? [:]
+                web["kiwi.example.ts.net:8443"] = [
+                    "Handlers": ["/": ["Proxy": "http://127.0.0.1:8000"]],
+                ]
+                configuration["Web"] = web
+                configuration["AllowFunnel"] = ["kiwi.example.ts.net:8443": true]
+            }
+            if hasConflictingFunnel {
+                configuration["AllowFunnel"] = ["kiwi.example.ts.net:443": true]
+            }
+            return try JSONSerialization.data(withJSONObject: configuration)
         }
         if arguments == ["serve", "--bg", "--https=443", "http://127.0.0.1:31928"] {
             configured = true
@@ -1056,4 +1113,6 @@ private actor FakeTailscaleBackend {
         }
         throw TailscaleServiceError.commandFailed("Unexpected test command: \(arguments)")
     }
+
+    var unrelatedFunnelIsConfigured: Bool { hasUnrelatedFunnel }
 }

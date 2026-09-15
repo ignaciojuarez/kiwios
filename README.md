@@ -10,7 +10,7 @@ It is not an operating system: macOS remains in charge. In the target design, Ki
 ## Design
 
 - One signed menu-bar Aqua process and one responsive tailnet web UI.
-- Tailscale Serve is the remote boundary; the HTTP backend stays on loopback and Funnel is unsupported.
+- Tailscale Serve is the remote boundary; the HTTP backend stays on loopback. KiwiOS never publishes itself through Funnel, but coexists with unrelated Tailscale endpoints on other ports.
 - Plugins declare data and actions; KiwiOS renders the UI.
 - Plugins are trusted executable code running as the logged-in user. Manifest permissions disclose intent and gate KiwiOS services; they are not a sandbox.
 - Remote operation begins only after login and FileVault unlock. Missing macOS permissions fail closed rather than opening an unattended prompt.
@@ -44,7 +44,7 @@ To build and open the Debug app in one step, run `./scripts/run.sh`. It defaults
 
 Add the optional **Monitor** plugin for CPU and memory usage, CPU and GPU temperatures, thermal pressure, and SMART drive temperatures. CPU and GPU temperatures use `macmon` on Apple silicon; the web presents its exact missing Homebrew requirements for confirmation, then runs the install locally on the Mac. **Brew** provides a searchable installed inventory; **Tools** provides prompt-free host status plus the remote-safe process, named SSH, and authorized notification actions. Add **Watcher** to summarize plugins that declare persistent sessions.
 
-Remote access starts only after the owning user logs in and unlocks FileVault. KiwiOS rejects conflicting Serve/Funnel settings, binds HTTP only on loopback, and never opens a macOS prompt from a browser request.
+Remote access starts only after the owning user logs in and unlocks FileVault. KiwiOS rejects only a conflicting configuration on its HTTPS port, binds HTTP only on loopback, and never opens a macOS prompt from a browser request.
 
 On the web **Plugins** tab, **Discover** lists featured cataloged commits and searches public GitHub repositories tagged `kiwios-plugin`. Plugin authors can copy the [plugin template](examples/plugin-template/) and follow the [author-to-install walkthrough](docs/plugin-authoring.md). No Swift or SDK is required.
 

@@ -4,6 +4,8 @@ All notable user-visible changes will be recorded here.
 
 ## Unreleased
 
+- Allow KiwiOS's tailnet-only HTTPS endpoint to coexist with unrelated Tailscale Serve and Funnel endpoints on other ports. KiwiOS still rejects and never overwrites a conflicting mapping on its own HTTPS port.
+
 - Add Plugins Discover: featured catalog rows install with `{repository, commit, pluginPath, catalogID}` using bundled catalog fields, and community GitHub `kiwios-plugin` search runs on submit. Featured cards show a Reviewed label and optional catalog description; community cards show a Community label and reuse the catalog name when the repository matches. One Install confirmation reviews source and missing Homebrew formulae, then queues those formulae without a second dialog. URL install still accepts only `{repository}`. Catalog matches return `reviewed: true` on the confirmation; stars are not trust.
 - Publish Xcodes and iOS Builds as dedicated repositories (`kiwios-xcodes`, `kiwios-ios-build-library`) and seed the bundled catalog with those exact commits. Author copies remain under `examples/`.
 
