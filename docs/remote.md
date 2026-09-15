@@ -1,21 +1,21 @@
 # Remote HTTP and PWA
 
-KiwiOS exposes its primary UI after the owning Aqua user logs in. Hummingbird 2.26.0 serves a fixed `127.0.0.1:31928` backend, and a KiwiOS-owned Tailscale Serve HTTPS mapping is the only supported publisher. Direct localhost browsing, LAN binding, alternate proxies, Tailscale Services, and Funnel are unsupported.
+KiwiOS exposes its primary UI after the owning Aqua user logs in. Hummingbird 2.26.0 serves a fixed `127.0.0.1:31928` backend, and a KiwiOS-owned tailnet-only Tailscale Serve HTTPS mapping is its only supported publisher. Direct localhost browsing, LAN binding, alternate proxies, Tailscale Services, and Funnel for the KiwiOS listener are unsupported. Other projects may own independent Tailscale Serve or Funnel endpoints on other ports.
 
 ## Publication lifecycle
 
 Publishing is an explicit native action:
 
-1. Read Tailscale status and the complete Serve configuration. Require a running user-owned node, no Funnel-enabled entries, and an empty Serve configuration.
+1. Read Tailscale status and the complete Serve configuration. Require a running user-owned node and an unused HTTPS `443` endpoint for KiwiOS; unrelated endpoints, including Funnel on another port, are retained.
 2. Bind Hummingbird on the fixed loopback address while its request gate is closed. Binding must succeed before changing Serve.
-3. Recheck the empty configuration digest, then create one background root HTTPS mapping to `http://127.0.0.1:31928`.
-4. Atomically record the HTTPS origin, complete Serve digest, and enabled intent while clearing the publication journal. Revalidate ownership and open the request gate only after that record is durable. Failed startup closes the backend and exact owned mapping while retaining enabled intent for bounded retries.
+3. Recheck the `443` endpoint digest, then create one background root HTTPS mapping to `http://127.0.0.1:31928`.
+4. Atomically record the HTTPS origin, KiwiOS endpoint digest, and enabled intent while clearing the publication journal. Revalidate ownership and open the request gate only after that record is durable. Failed startup closes the backend and exact owned mapping while retaining enabled intent for bounded retries.
 
 After KiwiOS issues the Serve mutation it retains the attempted origin until status confirms the exact root loopback mapping or cleanup removes it. A transient status failure can therefore be retried without forgetting ownership. Cleanup still requires exact origin, target, and configuration evidence and never resets another operator's Serve configuration.
 
-KiwiOS refuses to overwrite an existing Serve configuration. On relaunch it restores a recorded mapping only when the current origin, complete configuration digest, root loopback target, and Funnel state still match. It revalidates them every ten seconds. Drift closes the listener, revokes browser sessions, and directly updates native remote state; there is no second liveness poll. Backend failure and normal app shutdown remove only the exact owned Serve mapping while retaining enabled intent, so relaunch can publish it again. Explicit remote disable clears that intent and removes the mapping only when the exact ownership digest still matches.
+KiwiOS refuses to overwrite an existing `443` endpoint. On relaunch it restores a recorded mapping only when the current origin and its exact root loopback mapping still match. It revalidates that endpoint every ten seconds; unrelated endpoint changes do not affect KiwiOS. Drift on the KiwiOS endpoint closes the listener, revokes browser sessions, and directly updates native remote state; there is no second liveness poll. Backend failure and normal app shutdown remove only the exact owned mapping while retaining enabled intent, so relaunch can publish it again. Explicit remote disable clears that intent and removes the mapping only when its exact ownership digest still matches.
 
-The app never runs `tailscale up`, changes tailnet policy, enables HTTPS certificates, installs Tailscale, or configures Funnel. Readiness distinguishes a missing CLI, signed-out/stopped backend, unavailable tailnet HTTPS, and configuration conflict. Tailscale commands use fixed argv, `TAILSCALE_BE_CLI=1`, a small environment, bounded concurrent output capture, an eight-second timeout, and process-group teardown.
+The app never runs `tailscale up`, changes tailnet policy, enables HTTPS certificates, installs Tailscale, or configures Funnel. Readiness distinguishes a missing CLI, signed-out/stopped backend, unavailable tailnet HTTPS, and a conflict on KiwiOS's endpoint. Tailscale commands use fixed argv, `TAILSCALE_BE_CLI=1`, a small environment, bounded concurrent output capture, an eight-second timeout, and process-group teardown.
 
 ## Identity and browser sessions
 

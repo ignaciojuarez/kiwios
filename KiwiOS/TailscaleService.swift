@@ -10,7 +10,19 @@ struct ManagedServeTrust: Codable, Equatable, Sendable {
 
 struct RemotePublicationPlan: Codable, Equatable, Sendable {
     let origin: URL
-    fileprivate let emptyConfigurationDigest: Data
+    /// The complete Serve configuration can contain independently managed endpoints.
+    /// This digest reserves only KiwiOS's HTTPS port until publication commits.
+    fileprivate let managedPortDigest: Data
+
+    init(origin: URL) {
+        self.origin = origin
+        self.managedPortDigest = Data()
+    }
+
+    fileprivate init(origin: URL, managedPortDigest: Data) {
+        self.origin = origin
+        self.managedPortDigest = managedPortDigest
+    }
 }
 
 struct TailscaleServeState: Sendable, Equatable {
@@ -52,8 +64,7 @@ enum TailscaleServiceError: LocalizedError {
     case executableMissing
     case notConnected(String?)
     case httpsUnavailable
-    case existingServeConfiguration
-    case funnelConfigured
+    case managedPortConfigured
     case invalidDNSName
     case commandFailed(String)
     case configurationChanged
@@ -64,8 +75,7 @@ enum TailscaleServiceError: LocalizedError {
         case .notConnected(let state):
             state == "NeedsLogin" ? "Tailscale needs sign-in" : "Tailscale is not connected"
         case .httpsUnavailable: "Enable HTTPS certificates for this tailnet before using Serve"
-        case .existingServeConfiguration: "An existing Tailscale Serve configuration is present; KiwiOS will not overwrite it"
-        case .funnelConfigured: "Tailscale Funnel is configured; public exposure is unsupported"
+        case .managedPortConfigured: "Tailscale HTTPS port 443 is already configured; KiwiOS will not overwrite it"
         case .invalidDNSName: "Tailscale did not report a valid tailnet DNS name"
         case .commandFailed(let detail): "Tailscale command failed: \(detail)"
         case .configurationChanged: "Tailscale Serve configuration changed outside KiwiOS"
@@ -73,7 +83,7 @@ enum TailscaleServiceError: LocalizedError {
     }
 }
 
-/// Owns exactly one root HTTPS Serve mapping and refuses to alter pre-existing configuration.
+/// Owns exactly one root HTTPS Serve mapping without altering independently managed endpoints.
 /// No command is run until a caller explicitly invokes `start()` or `stop()` from native UI.
 actor TailscaleService {
     static let loopbackHost = "127.0.0.1"
@@ -102,24 +112,21 @@ actor TailscaleService {
         do {
             let origin = try await origin(executable: executable)
             let serve = try await run(executable, ["serve", "status", "--json"])
-            guard !Self.hasFunnelEnabled(serve) else {
-                return .init(status: .conflict("Funnel is configured; KiwiOS cannot publish remotely"))
-            }
             if let trust = managedTrust,
                trust.origin == origin,
-               trust.configurationDigest == Self.digest(serve),
+               trust.configurationDigest == Self.managedPortDigest(serve, origin: origin),
                Self.matchesManagedConfiguration(serve, origin: origin) {
                 return .init(status: .managed(origin: origin))
             }
             if publicationAttemptOrigin == origin,
                Self.matchesManagedConfiguration(serve, origin: origin) {
-                let trust = ManagedServeTrust(origin: origin, configurationDigest: Self.digest(serve))
+                let trust = ManagedServeTrust(origin: origin, configurationDigest: Self.managedPortDigest(serve, origin: origin))
                 managedTrust = trust
                 publicationAttemptOrigin = nil
                 return .init(status: .managed(origin: origin))
             }
-            guard Self.isEmptyConfiguration(serve) else {
-                return .init(status: .conflict("Another Serve configuration is present"))
+            guard !Self.managedPortIsConfigured(serve, origin: origin) else {
+                return .init(status: .conflict("Tailscale HTTPS port 443 is already configured"))
             }
             return .init(status: .available(origin: origin))
         } catch {
@@ -133,20 +140,20 @@ actor TailscaleService {
         guard let executable = resolveExecutable() else { throw TailscaleServiceError.executableMissing }
         let expectedOrigin = try await origin(executable: executable)
         let serve = try await run(executable, ["serve", "status", "--json"])
-        guard !Self.hasFunnelEnabled(serve) else { throw TailscaleServiceError.funnelConfigured }
-        guard Self.isEmptyConfiguration(serve) else { throw TailscaleServiceError.existingServeConfiguration }
-        return RemotePublicationPlan(origin: expectedOrigin, emptyConfigurationDigest: Self.digest(serve))
+        guard !Self.managedPortIsConfigured(serve, origin: expectedOrigin) else { throw TailscaleServiceError.managedPortConfigured }
+        return RemotePublicationPlan(origin: expectedOrigin, managedPortDigest: Self.managedPortDigest(serve, origin: expectedOrigin))
     }
 
-    /// Enables a persistent, tailnet-only HTTPS proxy after proving Serve and Funnel are empty.
+    /// Enables a persistent, tailnet-only HTTPS proxy after proving its own port is unused.
     func start(plan: RemotePublicationPlan) async throws -> ManagedServeTrust {
         guard let executable = resolveExecutable() else { throw TailscaleServiceError.executableMissing }
         let expectedOrigin = try await origin(executable: executable)
         guard expectedOrigin == plan.origin else { throw TailscaleServiceError.configurationChanged }
         let serveBefore = try await run(executable, ["serve", "status", "--json"])
-        guard Self.digest(serveBefore) == plan.emptyConfigurationDigest,
-              Self.isEmptyConfiguration(serveBefore) else { throw TailscaleServiceError.existingServeConfiguration }
-        guard !Self.hasFunnelEnabled(serveBefore) else { throw TailscaleServiceError.funnelConfigured }
+        guard Self.managedPortDigest(serveBefore, origin: expectedOrigin) == plan.managedPortDigest,
+              !Self.managedPortIsConfigured(serveBefore, origin: expectedOrigin) else {
+            throw TailscaleServiceError.managedPortConfigured
+        }
 
         let target = "http://\(Self.loopbackHost):\(Self.loopbackPort)"
         managedTrust = nil
@@ -156,24 +163,35 @@ actor TailscaleService {
         guard Self.matchesManagedConfiguration(serveAfter, origin: expectedOrigin) else {
             throw TailscaleServiceError.configurationChanged
         }
-        let trust = ManagedServeTrust(origin: expectedOrigin, configurationDigest: Self.digest(serveAfter))
+        let trust = ManagedServeTrust(origin: expectedOrigin,
+                                      configurationDigest: Self.managedPortDigest(serveAfter, origin: expectedOrigin))
         managedTrust = trust
         publicationAttemptOrigin = nil
         return trust
     }
 
-    /// Restores ownership after app relaunch only when the origin and complete Serve config still match.
-    func restore(_ trust: ManagedServeTrust) async throws -> RemotePublicationPlan {
-        guard try await validate(trust) else { throw TailscaleServiceError.configurationChanged }
-        managedTrust = trust
-        return RemotePublicationPlan(origin: trust.origin, emptyConfigurationDigest: Data())
+    /// Restores ownership after app relaunch when KiwiOS's exact mapping still matches.
+    /// A persisted pre-shared-config trust record is upgraded here after confirming its mapping.
+    func restore(_ trust: ManagedServeTrust) async throws -> ManagedServeTrust {
+        guard let executable = resolveExecutable() else { throw TailscaleServiceError.executableMissing }
+        let currentOrigin = try await origin(executable: executable)
+        let current = try await run(executable, ["serve", "status", "--json"])
+        guard currentOrigin == trust.origin,
+              Self.matchesManagedConfiguration(current, origin: currentOrigin) else {
+            throw TailscaleServiceError.configurationChanged
+        }
+        let restored = ManagedServeTrust(origin: currentOrigin,
+                                         configurationDigest: Self.managedPortDigest(current, origin: currentOrigin))
+        managedTrust = restored
+        return restored
     }
 
     func validate(_ trust: ManagedServeTrust) async throws -> Bool {
         guard let executable = resolveExecutable() else { throw TailscaleServiceError.executableMissing }
         let currentOrigin = try await origin(executable: executable)
         let current = try await run(executable, ["serve", "status", "--json"])
-        return currentOrigin == trust.origin && Self.digest(current) == trust.configurationDigest
+        return currentOrigin == trust.origin
+            && trust.configurationDigest == Self.managedPortDigest(current, origin: currentOrigin)
             && Self.matchesManagedConfiguration(current, origin: currentOrigin)
     }
 
@@ -183,12 +201,12 @@ actor TailscaleService {
         guard let executable = resolveExecutable() else { throw TailscaleServiceError.executableMissing }
         let current = try await runCleanup(executable, ["serve", "status", "--json"])
         if let trust = managedTrust {
-            guard Self.digest(current) == trust.configurationDigest,
+            guard Self.managedPortDigest(current, origin: trust.origin) == trust.configurationDigest,
                   Self.matchesManagedConfiguration(current, origin: trust.origin) else {
                 throw TailscaleServiceError.configurationChanged
             }
         } else if let origin = publicationAttemptOrigin {
-            if Self.isEmptyConfiguration(current) {
+            if !Self.managedPortIsConfigured(current, origin: origin) {
                 publicationAttemptOrigin = nil
                 return
             }
@@ -203,7 +221,7 @@ actor TailscaleService {
         publicationAttemptOrigin = nil
     }
 
-    /// The journal was written only after verifying an empty configuration. A retry
+    /// The journal was written only after verifying KiwiOS's port was unused. A retry
     /// still proves exact origin/target/shape ownership before issuing any cleanup.
     func recoverPublicationAttempt(_ plan: RemotePublicationPlan) async throws {
         publicationAttemptOrigin = plan.origin
@@ -292,33 +310,15 @@ actor TailscaleService {
         return result.output
     }
 
-    private static func isEmptyConfiguration(_ data: Data) -> Bool {
-        guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
-        if object is NSNull { return true }
-        guard let dictionary = object as? [String: Any],
-              Set(dictionary.keys).isSubset(of: ["TCP", "Web", "Services", "AllowFunnel", "Foreground"]) else { return false }
-        for key in ["TCP", "Web", "Services", "Foreground"] {
-            if let value = dictionary[key], (value as? [String: Any])?.isEmpty != true { return false }
-        }
-        if let value = dictionary["AllowFunnel"] {
-            guard let flags = value as? [String: Any],
-                  !flags.values.contains(where: { ($0 as? Bool) == true }) else { return false }
-        }
-        return true
-    }
-
     private static func matchesManagedConfiguration(_ data: Data, origin: URL) -> Bool {
         guard let object = try? JSONSerialization.jsonObject(with: data),
               let root = object as? [String: Any],
-              Set(root.keys).isSubset(of: ["TCP", "Web", "Services", "AllowFunnel", "Foreground"]),
-              !hasFunnelEnabled(data),
-              (root["Services"] == nil || (root["Services"] as? [String: Any])?.isEmpty == true),
-              (root["Foreground"] == nil || (root["Foreground"] as? [String: Any])?.isEmpty == true),
-              let tcp = root["TCP"] as? [String: Any], tcp.count == 1,
+              !hasFunnelEnabled(data, on: httpsPort),
+              let tcp = root["TCP"] as? [String: Any],
               let port = tcp[String(httpsPort)] as? [String: Any], port.count == 1,
               port["HTTPS"] as? Bool == true,
               let host = origin.host?.lowercased(),
-              let web = root["Web"] as? [String: Any], web.count == 1,
+              let web = root["Web"] as? [String: Any],
               let server = web["\(host):\(httpsPort)"] as? [String: Any], server.count == 1,
               let handlers = server["Handlers"] as? [String: Any], handlers.count == 1,
               let handler = handlers["/"] as? [String: Any], handler.count == 1,
@@ -326,24 +326,38 @@ actor TailscaleService {
         return true
     }
 
-    private static func hasFunnelEnabled(_ data: Data) -> Bool {
-        guard let object = try? JSONSerialization.jsonObject(with: data) else { return true }
-        func inspect(_ value: Any) -> Bool {
-            if let dictionary = value as? [String: Any] {
-                if let flags = dictionary["AllowFunnel"] as? [String: Any], flags.values.contains(where: { ($0 as? Bool) == true }) {
-                    return true
-                }
-                return dictionary.values.contains(where: inspect)
-            }
-            if let array = value as? [Any] { return array.contains(where: inspect) }
-            return false
-        }
-        return inspect(object)
+    private static func managedPortIsConfigured(_ data: Data, origin: URL) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return true }
+        let port = String(httpsPort)
+        if (root["TCP"] as? [String: Any])?[port] != nil { return true }
+        if (root["Web"] as? [String: Any])?["\(origin.host?.lowercased() ?? ""):\(port)"] != nil { return true }
+        return hasFunnelEnabled(data, on: httpsPort)
     }
 
-    private static func digest(_ data: Data) -> Data {
-        guard let object = try? JSONSerialization.jsonObject(with: data),
-              let canonical = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else {
+    private static func hasFunnelEnabled(_ data: Data, on port: Int) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let flags = root["AllowFunnel"] as? [String: Any] else { return false }
+        return flags.contains { key, value in
+            (value as? Bool) == true && (key == String(port) || key.hasSuffix(":\(port)"))
+        }
+    }
+
+    /// Canonicalize only the configuration entries that can claim KiwiOS's HTTPS port.
+    private static func managedPortDigest(_ data: Data, origin: URL) -> Data {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return Data(SHA256.hash(data: data))
+        }
+        let port = String(httpsPort)
+        let hostPort = "\(origin.host?.lowercased() ?? ""):\(port)"
+        let funnel = (root["AllowFunnel"] as? [String: Any] ?? [:]).filter { key, _ in
+            key == port || key.hasSuffix(":\(port)")
+        }
+        let projection: [String: Any] = [
+            "TCP": (root["TCP"] as? [String: Any])?[port] ?? NSNull(),
+            "Web": (root["Web"] as? [String: Any])?[hostPort] ?? NSNull(),
+            "AllowFunnel": funnel,
+        ]
+        guard let canonical = try? JSONSerialization.data(withJSONObject: projection, options: [.sortedKeys]) else {
             return Data(SHA256.hash(data: data))
         }
         return Data(SHA256.hash(data: canonical))
