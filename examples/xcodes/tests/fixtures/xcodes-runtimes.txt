@@ -1,0 +1,11 @@
+-- iOS --
+iOS 18.0 (Bundled with selected Xcode)
+iOS 18.1-beta1
+iOS 18.2 [Apple Silicon]
+iOS 18.2 [Apple Silicon] (22C146)
+-- visionOS --
+visionOS 2.0
+
+Note: Bundled runtimes are indicated for the currently selected Xcode, more bundled runtimes may exist in other Xcode(s)
+
+Showing runtimes for this Mac by default: Apple Silicon (arm64).

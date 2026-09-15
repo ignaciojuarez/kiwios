@@ -220,7 +220,7 @@ struct PluginWidget: Decodable, Equatable, Identifiable, Sendable {
 }
 
 enum PluginUIKind: String, Equatable, Sendable {
-    case stat, checks, actions, table, log, form, watchers
+    case stat, checks, actions, table, log, form, watchers, artifacts
 }
 
 extension PluginUIKind: Decodable {
@@ -483,7 +483,7 @@ struct PluginLoader {
         let exactCheck = components.count == 2 && components[0] == "checks" && checks.contains(components[1])
         let exactAction = components.count == 2 && components[0] == "actions" && actions.contains(components[1])
         switch kind {
-        case .stat, .table:
+        case .stat, .table, .artifacts:
             return exactCheck
         case .checks:
             return source == "checks" || exactCheck

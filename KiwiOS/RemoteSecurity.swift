@@ -20,6 +20,7 @@ struct RemoteMutation: Codable, Equatable, Sendable {
         case requestPluginDependencies
         case confirmPluginEnable
         case requestPluginInstall
+        case searchPlugins
         case requestPluginUpdate
         case confirmPluginInstall
         case requestPluginRemoval
@@ -34,6 +35,8 @@ struct RemoteMutation: Codable, Equatable, Sendable {
         case confirmNativeOperation
         case probeSSH
         case deliverNotification
+        case requestArtifactInstall
+        case confirmArtifactInstall
     }
 
     let requestID: UUID
@@ -43,6 +46,8 @@ struct RemoteMutation: Codable, Equatable, Sendable {
     let repository: String?
     let commit: String?
     let pluginPath: String?
+    let catalogID: String?
+    let query: String?
     let jobID: UUID?
     let values: [String: JSONValue]?
     let configRevision: Int64?
@@ -56,6 +61,7 @@ struct RemoteMutation: Codable, Equatable, Sendable {
     let peerName: String?
     let title: String?
     let body: String?
+    let artifactID: String?
 }
 
 enum RemoteLayoutPolicy {

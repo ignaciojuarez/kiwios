@@ -78,11 +78,11 @@ Prompt-free, identity-bound operations can run from the PWA. The PWA can also st
 ## 4 — discovery and explicit install
 
 - [x] Implement repository-plus-exact-SHA staging, review, install/update, and complete KiwiOS-owned-content removal.
-- [ ] Expose the implemented cached/rate-limited GitHub discovery through the web-primary product; exact-SHA installation is available through the reviewed PWA flow and attended setup.
+- [x] Expose the implemented cached/rate-limited GitHub discovery through the web-primary Plugins Discover section; exact-SHA installation remains the reviewed PWA flow and attended setup.
 - [x] Show source, commit, license, dependencies, and disclosure changes before trust; bind activation to approved repository, commit, and digests.
-- [x] Prepare a strict bundled catalog format and pull-request review policy. The catalog deliberately contains no approved entries.
+- [x] Prepare a strict bundled catalog format and pull-request review policy, and seed reviewed exact commits from dedicated plugin repositories.
 - [x] Add a copyable plugin template and a menu-bar/web author-to-install walkthrough.
-- [ ] Publish and maintain the curated catalog repository, review real exact commits, and add approved entries.
+- [ ] Publish and maintain the curated catalog as an external repository. The bundled `catalog/catalog.json` remains the signed in-app source of featured entries.
 - [ ] Validate install/update interruption, incompatible config, source tampering, and removal/reinstall recovery after Xcode is ready.
 
 No source repository was published or plugin installed during this implementation pass. The standalone validator CLI remains future work; local validation currently uses the app.

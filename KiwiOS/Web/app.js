@@ -1,5 +1,5 @@
 "use strict";
-const state={snapshot:null,snapshotWire:null,csrf:null,pending:null,connected:false,mutating:false,refreshPromise:null,homeEditing:false,draggedWidget:null};
+const state={snapshot:null,snapshotWire:null,csrf:null,pending:null,pendingInstall:null,connected:false,mutating:false,refreshPromise:null,homeEditing:false,draggedWidget:null};
 const el=id=>document.getElementById(id);
 const node=(tag,className,text)=>{const n=document.createElement(tag);if(className)n.className=className;if(text!==undefined)n.textContent=String(text);return n};
 const valueText=value=>value===null||value===undefined?"—":typeof value==="object"?JSON.stringify(value):String(value);
@@ -52,7 +52,7 @@ function configurationForm(plugin,{prefix="configuration",dismiss}={}){
       else if(input.type==="checkbox")input.checked=!!initial;else input.value=initial;
     }
     initialValues[key]=input.type==="checkbox"?input.checked:input.value;
-    wrap.append(label,input);if(field.description)wrap.append(node("span","detail",field.description));form.append(wrap);
+    wrap.append(label,input);if(field.description)wrap.append(node("span","detail",field.description));if(field.warning)wrap.append(node("span","field-warning",field.warning));form.append(wrap);
   }
   form.addEventListener("input",()=>{form.dataset.dirty="true"});
   const save=buttonControl("Save",{type:"submit"});
@@ -76,7 +76,7 @@ function renderKind(plugin,descriptor,widget=false){const c=card(descriptor.titl
   if(kind==="stat"){const data=(liveFor(plugin,source)&&liveFor(plugin,source).state)||(plugin.results&&plugin.results[source]&&plugin.results[source].state);if(!validStat(data)){c.append(node("p","muted","Unavailable"));return c}const line=node("div","stat-value",valueText(data.value));if(data.unit)line.append(" "+data.unit);c.append(line);if(data.detail&&!widget)c.append(node("p","detail",data.detail));if(data.delta&&!widget)c.append(node("p","detail",data.delta));return c}
   if(kind==="checks"){const rows=node("div","rows");const checks=(plugin.checks||[]).filter(x=>source==="checks"||source===`checks.${x.id}`);checks.forEach(check=>{const key=`checks.${check.id}`,job=activeJob(plugin.id,key),live=liveFor(plugin,key),r=live||(plugin.results&&plugin.results[key]),running=!!live||!!job;const row=node("div","row"),main=node("div","row-main"),outcome=running?"running":r&&r.outcome;main.append(node("div","row-title",check.label),node("div","status-label",outcomeText(outcome)));if(r&&r.message)main.append(node("div","detail",r.message));appendProgress(main,r&&r.progress,`${check.label} progress`);const button=node("button",job?"danger":"",job?"Cancel":running?"Running":"Run");button.dataset.unavailable=String(!job&&(running||plugin.lifecycle!=="active"));button.onclick=()=>job?perform({operation:"cancelJob",jobID:job.id}):perform({operation:"refreshCheck",pluginID:plugin.id,contributionID:check.id});row.append(statusDot(outcome),main,button);rows.append(row)});c.append(checks.length?rows:node("p","muted","No checks"));return c}
   if(kind==="actions"){const rows=node("div","rows");const actions=(plugin.actions||[]).filter(x=>source==="actions"||source===`actions.${x.id}`);actions.forEach(action=>{const key=`actions.${action.id}`,job=activeJob(plugin.id,key),live=liveFor(plugin,key),r=live||(plugin.results&&plugin.results[key]),running=!!live||!!job;const row=node("div","row"),main=node("div","row-main"),outcome=running?"running":r&&r.outcome;main.append(node("div","row-title",action.label),node("div","status-label",outcomeText(outcome)));if(r&&r.message)main.append(node("div","detail",r.message));appendProgress(main,r&&r.progress,`${action.label} progress`);const button=node("button",job?"danger":"",job?"Cancel":running?"Running":action.confirm?"Review":"Run");button.dataset.unavailable=String(!job&&(running||plugin.lifecycle!=="active"));button.onclick=()=>job?perform({operation:"cancelJob",jobID:job.id}):perform({operation:"requestAction",pluginID:plugin.id,contributionID:action.id});row.append(statusDot(outcome),main,button);rows.append(row)});c.append(actions.length?rows:node("p","muted","No actions"));return c}
-  if(kind==="table"){const data=result&&result.state;if(!validTable(data)){c.append(node("p","muted","Table data unavailable"));return c}const wrap=node("div","table-wrap"),table=node("table"),head=node("thead"),tr=node("tr");wrap.tabIndex=0;wrap.setAttribute("aria-label",`${descriptor.title||descriptor.label||descriptor.id} table`);data.columns.forEach(column=>{const heading=node("th","",column.label);heading.scope="col";tr.append(heading)});head.append(tr);const body=node("tbody");data.rows.forEach(row=>{const line=node("tr");data.columns.forEach(column=>line.append(node("td","",valueText(row[column.id]))));body.append(line)});table.append(head,body);wrap.append(table);c.append(wrap);return c}
+  if(kind==="table"||kind==="artifacts"){const data=result&&result.state;if(!validTable(data)){c.append(node("p","muted","Table data unavailable"));return c}const installable=kind==="artifacts"&&plugin.lifecycle==="active";const wrap=node("div","table-wrap"),table=node("table"),head=node("thead"),tr=node("tr");wrap.tabIndex=0;wrap.setAttribute("aria-label",`${descriptor.title||descriptor.label||descriptor.id} table`);data.columns.forEach(column=>{const heading=node("th","",column.label);heading.scope="col";tr.append(heading)});if(installable){const heading=node("th","","Install");heading.scope="col";tr.append(heading)}head.append(tr);const body=node("tbody");data.rows.forEach(row=>{const line=node("tr");data.columns.forEach(column=>line.append(node("td","",valueText(row[column.id]))));if(installable){const cell=node("td");const button=buttonControl("Install",{action:()=>perform({operation:"requestArtifactInstall",pluginID:plugin.id,artifactID:row.id})});button.dataset.unavailable=String(!state.connected);cell.append(button);line.append(cell)}body.append(line)});table.append(head,body);wrap.append(table);c.append(wrap);if(installable)c.append(node("p","detail","Install uses iPhone Safari on your tailnet. Open this page in Safari, not the Home Screen web app."));return c}
   if(kind==="log"){const logs=result&&result.logs||[];c.append(logs.length?node("pre","",logs.map(item=>`[${item.source}] ${item.message}`).join("\n")):node("p","muted","No log output"));return c}
   if(kind==="watchers"){
     const rows=node("div","rows"),sessions=(state.snapshot.plugins||[]).filter(item=>item.lifecycle==="active"&&item.watch);
@@ -219,9 +219,30 @@ function renderSettings(){
   return box;
 }
 function pluginStatus(plugin){
+  if(pluginInstalling(plugin))return "Installing";
   if(plugin.lifecycle==="error"||plugin.setup==="error")return "Error";
   if(plugin.setup==="authorization-required")return "Authorization needed";
+  if(plugin.lifecycle==="needs-setup")return "Setting up";
   return null;
+}
+function catalogByRepository(){
+  const map=new Map();
+  for(const entry of state.snapshot.catalog||[])if(entry.repository)map.set(entry.repository,entry);
+  return map;
+}
+function brewJobRunning(){
+  return (state.snapshot.jobs||[]).some(job=>job.pluginID==="@native"&&job.contributionID==="homebrew-install"&&["scheduled","queued","running"].includes(job.status));
+}
+function pluginInstalling(plugin){
+  if((state.snapshot.installingPluginIDs||[]).includes(plugin.id))return true;
+  if(state.pendingInstall&&(state.pendingInstall.id===plugin.id||state.pendingInstall.repository&&state.pendingInstall.repository===plugin.sourceRepository))return true;
+  return (plugin.missingBrew||[]).length>0&&brewJobRunning();
+}
+function discoverBusy(entry){
+  if((state.snapshot.installingPluginIDs||[]).includes(entry.id))return true;
+  if(state.pendingInstall&&(state.pendingInstall.id===entry.id||state.pendingInstall.repository===entry.repository))return true;
+  const plugin=(state.snapshot.plugins||[]).find(item=>item.id===entry.id||item.sourceRepository===entry.repository);
+  return !!plugin&&pluginInstalling(plugin);
 }
 function pluginHasConfiguration(plugin){return !!plugin.configuration?.available}
 function pluginNeedsConfiguration(plugin){return ["configuration-required","attended-setup-required"].includes(plugin.setup)}
@@ -245,16 +266,24 @@ function openPluginConfiguration(plugin){
   if(!dialog.open)dialog.showModal();
 }
 function renderPlugins(){
-  const box=node("div","stack"),plugins=node("div","plugin-grid");
-  if(!(state.snapshot.plugins||[]).length)plugins.append(empty("No plugins available","Add a GitHub plugin to begin review."));
+  const box=node("div","stack");
+  box.append(node("h2","section-title","Your plugins"));
+  const plugins=node("div","plugin-grid");
+  if(!(state.snapshot.plugins||[]).length)plugins.append(empty("No plugins available","Install a featured plugin below or add a GitHub repository."));
   for(const plugin of state.snapshot.plugins||[]){
     const item=node("article","card plugin-card"),summary=node("div","plugin-summary"),heading=node("div","plugin-heading"),title=node("h2","plugin-title",plugin.name),status=pluginStatus(plugin),controls=node("div","button-row"),hasConfiguration=pluginHasConfiguration(plugin),needsConfiguration=pluginNeedsConfiguration(plugin);
     heading.append(title);if(status)heading.append(node("span","status-label",status));summary.append(heading,node("p","detail",plugin.description||"No description provided."));
     if(hasConfiguration&&!needsConfiguration)summary.append(configureButton(plugin,true));
     item.append(summary);
-    const missing=plugin.missingBrew||[],notAdded=plugin.lifecycle==="installed",installDependencies=missing.length&&["needs-setup","disabled","error"].includes(plugin.lifecycle);
-    if(notAdded||installDependencies){
-      const install=buttonControl("Install",{action:()=>perform({operation:notAdded?"enablePlugin":"requestPluginDependencies",pluginID:plugin.id})});install.dataset.unavailable=String(notAdded&&!plugin.canEnableRemotely);if(notAdded&&install.dataset.unavailable==="true"&&plugin.enableBlocker)install.title=plugin.enableBlocker;controls.append(install);
+    const missing=plugin.missingBrew||[],notAdded=plugin.lifecycle==="installed",installing=pluginInstalling(plugin);
+    if(installing){
+      const busy=buttonControl("Installing");busy.dataset.unavailable="true";controls.append(busy);
+    }else if(notAdded){
+      const install=buttonControl("Install",{action:()=>perform({operation:"enablePlugin",pluginID:plugin.id})});install.dataset.unavailable=String(!plugin.canEnableRemotely);if(install.dataset.unavailable==="true"&&plugin.enableBlocker)install.title=plugin.enableBlocker;controls.append(install);
+    }else if(missing.length&&["needs-setup","disabled","error"].includes(plugin.lifecycle)){
+      controls.append(buttonControl("Install packages",{action:()=>perform({operation:"requestPluginDependencies",pluginID:plugin.id})}));
+    }else if(plugin.lifecycle==="needs-setup"&&!needsConfiguration){
+      const busy=buttonControl("Setting up");busy.dataset.unavailable="true";controls.append(busy);
     }else if(needsConfiguration){
       controls.append(configureButton(plugin));
     }else if(plugin.setup!=="authorization-required"){
@@ -264,7 +293,51 @@ function renderPlugins(){
     if(!notAdded)controls.append(removePluginButton(plugin));
     item.append(controls);plugins.append(item);
   }
-  box.append(plugins);return box;
+  box.append(plugins,renderDiscover());return box;
+}
+function discoverAction(entry,{catalogInstall=false}={}){
+  const installed=(state.snapshot.plugins||[]).some(plugin=>plugin.id===entry.id||plugin.sourceRepository===entry.repository);
+  const controls=node("div","button-row");
+  if(discoverBusy(entry)){const busy=buttonControl("Installing");busy.dataset.unavailable="true";controls.append(busy)}
+  else if(installed){const done=buttonControl("Installed");done.dataset.unavailable="true";controls.append(done)}
+  else if(catalogInstall)controls.append(buttonControl("Install",{action:()=>perform({operation:"requestPluginInstall",repository:entry.repository,commit:entry.commit,pluginPath:entry.path,catalogID:entry.id})}));
+  else controls.append(buttonControl("Install",{action:()=>perform({operation:"requestPluginInstall",repository:entry.repository})}));
+  return controls;
+}
+function renderDiscover(){
+  const section=node("section","discover"),cataloged=catalogByRepository();
+  section.append(node("h2","section-title","Discover"),node("p","detail","Featured plugins are reviewed exact commits bundled with this KiwiOS build. Community results are unreviewed GitHub repositories tagged kiwios-plugin. Stars measure interest, not trust."));
+  section.append(node("h3","section-title","Featured"));
+  const catalog=state.snapshot.catalog||[],featuredGrid=node("div","plugin-grid");
+  if(!catalog.length)section.append(node("p","muted","No featured plugins in this build."));
+  else {
+    for(const entry of catalog){
+      const item=node("article","card plugin-card"),summary=node("div","plugin-summary"),heading=node("div","plugin-heading");
+      heading.append(node("h2","plugin-title",entry.name),node("span","status-label","Reviewed"));
+      summary.append(heading,node("p","detail",entry.description||"No description provided."),node("p","age",`${entry.version} · ${entry.license}`),node("p","age",entry.repository||""));
+      item.append(summary,discoverAction(entry,{catalogInstall:true}));featuredGrid.append(item);
+    }
+    section.append(featuredGrid);
+  }
+  const community=card("Community"),search=state.snapshot.pluginSearch||{},form=node("form","form"),field=node("div","field"),label=node("label","","GitHub search"),input=node("input");
+  input.id="plugin-search";input.type="search";input.maxLength=100;input.autocomplete="off";input.placeholder="Search kiwios-plugin repositories";input.value=search.query||"";label.htmlFor=input.id;
+  field.append(label,input);form.append(field,buttonControl("Search",{type:"submit"}));
+  form.addEventListener("input",()=>{form.dataset.dirty="true"});
+  form.onsubmit=event=>{event.preventDefault();perform({operation:"searchPlugins",query:input.value.trim()})};
+  community.append(form);
+  if(search.error)community.append(node("p","field-warning",search.error));
+  const results=search.results||[];
+  if(results.length){
+    const grid=node("div","plugin-grid");
+    for(const result of results){
+      const catalog=cataloged.get(result.repository),item=node("article","card plugin-card"),summary=node("div","plugin-summary"),heading=node("div","plugin-heading");
+      heading.append(node("h2","plugin-title",catalog?catalog.name:result.name),node("span","status-label","Community"));
+      summary.append(heading,node("p","detail",(catalog&&catalog.description)||result.description||"No description provided."),node("p","age",`${result.owner||""}/${result.name||""} · ${result.stars||0} stars`));
+      item.append(summary,discoverAction(catalog?{...catalog,repository:result.repository}:{id:result.repository,repository:result.repository}));grid.append(item);
+    }
+    community.append(grid);
+  }else if(!search.error)community.append(node("p","muted",search.query?"No repositories matched.":"Search GitHub for repositories tagged kiwios-plugin. Submit to search; results stay until the next search."));
+  section.append(community);return section;
 }
 function homeLayout(){
   const layout=state.snapshot.layout||{},hidden=new Set(layout.hiddenWidgets||[]),widgets=(layout.widgets||[]).filter(key=>!hidden.has(key));
@@ -429,21 +502,32 @@ function renderBrew(){
 async function perform(payload){
   if(!state.connected||state.mutating){showNotice("Wait for a live connection and the current request to finish.");return false}
   state.mutating=true;updateAvailability();
-  const message={reloadPlugins:"Reloading plugins…",saveConfig:"Saving configuration…",saveLayout:"Saving layout…",disablePlugin:"Disabling plugin…"}[payload.operation];
+  const message={reloadPlugins:"Reloading plugins…",saveConfig:"Saving configuration…",saveLayout:"Saving layout…",disablePlugin:"Disabling plugin…",searchPlugins:"Searching plugins…"}[payload.operation];
   if(message)showNotice(message);
   try{
     const result=await mutate(payload);
     if(result.confirmationToken&&result.label){
-      state.pending={operation:result.confirmationOperation||"confirmAction",confirmationToken:result.confirmationToken};
+      state.pending={operation:result.confirmationOperation||"confirmAction",confirmationToken:result.confirmationToken,review:result.review};
       el("confirmation-title").textContent=result.label;
       el("confirmation-detail").textContent=result.review?reviewDetail(result.review):"Confirm within 60 seconds. The target and policy are checked again before execution.";
-      el("confirm-action").textContent=state.pending.operation==="confirmPluginRemoval"?"Remove plugin":state.pending.operation==="confirmPluginInstall"?"Install plugin":state.pending.operation==="confirmPluginEnable"?"Enable plugin":state.pending.operation==="confirmNativeOperation"&&result.review?.brew?"Install packages":"Run action";
+      el("confirm-action").textContent=state.pending.operation==="confirmPluginRemoval"?"Remove plugin":state.pending.operation==="confirmPluginInstall"?"Install":state.pending.operation==="confirmPluginEnable"?"Enable plugin":state.pending.operation==="confirmArtifactInstall"?"Install on iPhone":state.pending.operation==="confirmNativeOperation"&&result.review?.brew?"Install packages":"Run action";
       el("confirmation").returnValue="";el("confirmation").showModal();return true;
+    }
+    if(result.installURL){
+      const standalone=window.matchMedia("(display-mode: standalone)").matches;
+      const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+      if(ios&&!standalone)location.assign(result.installURL);
+      else showNotice(result.guidance||"Open this page in iPhone Safari to install.");
+      await refresh(true);
+      return true;
     }
     await refresh(true);
     if(state.connected)el("notice").classList.add("hidden");
     return true;
-  }catch(error){showNotice(error.message);return false}
+  }catch(error){
+    if(payload.operation==="confirmPluginInstall")state.pendingInstall=null;
+    showNotice(error.message);return false;
+  }
   finally{state.mutating=false;updateAvailability()}
 }
 function reviewDetail(review){
@@ -458,6 +542,7 @@ function reviewDetail(review){
   if((review.brew||[]).length)lines.push(`Homebrew requirements: ${review.brew.join(", ")}`);
   if(review.permissionChanges){const changes=[...(review.permissionChanges.added||[]).map(value=>`Added ${value}`),...(review.permissionChanges.removed||[]).map(value=>`Removed ${value}`)];if(changes.length)lines.push(`Disclosure changes: ${changes.join("; ")}`)}
   if((review.homebrew||[]).length)lines.push(`Homebrew retained: ${review.homebrew.map(item=>item.formula).join(", ")}`);
+  if(review.reviewed)lines.push("Reviewed catalog entry. Catalog inclusion is not a warranty, security certification, or sandbox.");
   if(review.warning)lines.push(review.warning);
   if(review.destruction)lines.push(review.destruction);
   if(review.retention)lines.push(review.retention);
@@ -474,6 +559,11 @@ async function refreshOnce(force){
     const response=await api("/api/snapshot"),wire=await response.text(),snapshot=JSON.parse(wire),changed=wire!==state.snapshotWire;
     if(snapshot.api!=="kiwios.remote/1")throw new Error("Unsupported remote API; update KiwiOS on the Mac.");
     state.snapshot=snapshot;state.snapshotWire=wire;state.connected=true;
+    if(state.pendingInstall){
+      const plugin=(snapshot.plugins||[]).find(item=>item.id===state.pendingInstall.id||item.sourceRepository===state.pendingInstall.repository);
+      const transitioning=plugin&&(snapshot.installingPluginIDs||[]).includes(plugin.id);
+      if(plugin&&!transitioning&&!((plugin.missingBrew||[]).length&&brewJobRunning()))state.pendingInstall=null;
+    }
     el("connection").textContent="Online";el("connection").className="connection online";
     const viewer=snapshot.viewer||{};
     el("viewer").replaceChildren(node("strong","",viewer.displayName||viewer.loginName||"Tailnet user"),node("span","",viewer.loginName||""));
@@ -491,7 +581,16 @@ async function refreshOnce(force){
 function showNotice(message){el("notice").textContent=message;el("notice").classList.remove("hidden")}
 function openPluginInstall(){const dialog=el("plugin-install");dialog.returnValue="";dialog.showModal();el("plugin-repository").focus()}
 el("back").onclick=()=>{location.hash="home"};
-function closeConfirmation(confirmed){const pending=state.pending;state.pending=null;el("confirmation").close();if(confirmed&&pending)perform(pending)}
+function closeConfirmation(confirmed){
+  const pending=state.pending;state.pending=null;el("confirmation").close();
+  if(confirmed&&pending){
+    if(pending.operation==="confirmPluginInstall"&&pending.review){
+      state.pendingInstall={id:pending.review.pluginID,repository:pending.review.repository};
+      render();
+    }
+    perform(pending);
+  }
+}
 el("confirmation").addEventListener("cancel",event=>{event.preventDefault();closeConfirmation(false)});
 el("cancel-confirmation").onclick=()=>closeConfirmation(false);
 el("confirm-action").onclick=()=>closeConfirmation(true);

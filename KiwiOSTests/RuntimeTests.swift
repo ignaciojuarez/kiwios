@@ -89,6 +89,24 @@ final class RuntimeTests: XCTestCase {
         await runtime.shutdown()
     }
 
+    @MainActor
+    func testRepeatedFailureErrorDoesNotStickAfterPluginContentsChange() async throws {
+        let storage = try temporaryStorage()
+        let store = try PersistenceStore(url: storage.appendingPathComponent("KiwiOS.sqlite"))
+        try await store.upsertPlugin(PluginRecord(id: "monitor", name: "Monitor", version: "0.3.0",
+            sourceRepository: "kiwios-bundled:monitor",
+            sourceCommit: nil, manifestDigest: "old", contentDigest: "old", enabled: true,
+            lifecycleState: PluginLifecycle.error.rawValue, updatedAt: Date()))
+
+        let runtime = HubRuntime(storageRoot: storage)
+        await runtime.waitUntilReady()
+
+        let monitor = try XCTUnwrap(runtime.plugins.first(where: { $0.id == "monitor" }))
+        XCTAssertNotEqual(monitor.lifecycle, .error)
+        XCTAssertEqual(monitor.lifecycle, .disabled)
+        await runtime.shutdown()
+    }
+
     func testMonitorAcceptsAppleSiliconSmartctlIOServiceDevices() throws {
         let tools = try temporaryStorage()
         try makeExecutable(at: tools.appendingPathComponent("smartctl"), contents: """
@@ -123,57 +141,54 @@ final class RuntimeTests: XCTestCase {
         #!/bin/sh
         echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":39.75}}'
         """)
-        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("plugins/monitor/monitor.sh")
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [script.path, "cpu-temperature"]
-        process.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
-        process.standardOutput = output
-        try process.run()
-        process.waitUntilExit()
+        let cpu = try runMonitor(mode: "cpu-temperature", tools: tools)
+        XCTAssertEqual(cpu.status, 0)
+        XCTAssertTrue(cpu.output.contains("CPU temperature is 42.2 °C"))
+        XCTAssertTrue(cpu.output.contains("\"value\":42.2"))
 
-        let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        XCTAssertEqual(process.terminationStatus, 0)
-        XCTAssertTrue(result.contains("CPU temperature is 42.2 °C"))
-        XCTAssertTrue(result.contains("\"value\":42.2"))
+        let gpu = try runMonitor(mode: "gpu-temperature", tools: tools)
+        XCTAssertEqual(gpu.status, 0)
+        XCTAssertTrue(gpu.output.contains("GPU temperature is 39.8 °C"))
+        XCTAssertTrue(gpu.output.contains("\"value\":39.8"))
+    }
 
-        let gpu = Process()
-        let gpuOutput = Pipe()
-        gpu.executableURL = URL(fileURLWithPath: "/bin/sh")
-        gpu.arguments = [script.path, "gpu-temperature"]
-        gpu.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
-        gpu.standardOutput = gpuOutput
-        try gpu.run()
-        gpu.waitUntilExit()
+    func testMonitorPrefersUsableMacmonTemperatureOverIdleAverage() throws {
+        let tools = try temporaryStorage()
+        try makeExecutable(at: tools.appendingPathComponent("macmon"), contents: """
+        #!/bin/sh
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":2.4}}'
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":35.5}}'
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":2.4}}'
+        """)
+        let result = try runMonitor(mode: "gpu-temperature", tools: tools)
+        XCTAssertEqual(result.status, 0)
+        XCTAssertTrue(result.output.contains("GPU temperature is 35.5 °C"))
+        XCTAssertTrue(result.output.contains("\"value\":35.5"))
+    }
 
-        let gpuResult = String(decoding: gpuOutput.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        XCTAssertEqual(gpu.terminationStatus, 0)
-        XCTAssertTrue(gpuResult.contains("GPU temperature is 39.8 °C"))
-        XCTAssertTrue(gpuResult.contains("\"value\":39.8"))
+    func testMonitorWarnsWhenMacmonGPUTemperatureIsIdle() throws {
+        let tools = try temporaryStorage()
+        try makeExecutable(at: tools.appendingPathComponent("macmon"), contents: """
+        #!/bin/sh
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":2.4}}'
+        """)
+        let result = try runMonitor(mode: "gpu-temperature", tools: tools)
+        XCTAssertEqual(result.status, 0)
+        XCTAssertTrue(result.output.contains("\"t\":\"warn\""))
+        XCTAssertTrue(result.output.contains("unavailable while idle"))
+        XCTAssertTrue(result.output.contains("\"value\":\"Idle\""))
+        XCTAssertFalse(result.output.contains("implausible GPU temperature"))
     }
 
     func testMonitorRejectsImplausibleMacmonTemperature() throws {
         let tools = try temporaryStorage()
         try makeExecutable(at: tools.appendingPathComponent("macmon"), contents: """
         #!/bin/sh
-        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":2.4}}'
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":200}}'
         """)
-        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("plugins/monitor/monitor.sh")
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [script.path, "gpu-temperature"]
-        process.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
-        process.standardOutput = output
-        try process.run()
-        process.waitUntilExit()
-
-        let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        XCTAssertEqual(process.terminationStatus, 2)
-        XCTAssertTrue(result.contains("implausible GPU temperature"))
+        let result = try runMonitor(mode: "gpu-temperature", tools: tools)
+        XCTAssertEqual(result.status, 2)
+        XCTAssertTrue(result.output.contains("implausible GPU temperature"))
     }
 
     func testVolumeHealthTableRunsWithSystemAwk() throws {
@@ -254,6 +269,73 @@ final class RuntimeTests: XCTestCase {
         XCTAssertEqual(plugin.manifest.checks.first?.label, "Hello")
         XCTAssertEqual(plugin.manifest.checks.first?.command, ["./check.sh"])
         XCTAssertEqual(plugin.manifest.actions.first?.confirm, true)
+    }
+
+    func testLoadsNonBundledXcodesInventoryManifest() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("examples/xcodes")
+
+        let plugin = try PluginLoader().load(from: root)
+
+        XCTAssertEqual(plugin.manifest.id, "xcodes")
+        XCTAssertEqual(
+            plugin.manifest.description,
+            "Inventory of installed and available Xcodes, simulator runtimes, and devices."
+        )
+        XCTAssertEqual(plugin.manifest.brew, ["xcodes"])
+        XCTAssertTrue(plugin.manifest.actions.isEmpty)
+        XCTAssertEqual(plugin.manifest.checks.count, 7)
+        XCTAssertEqual(plugin.manifest.ui.pages.filter { $0.kind == .table }.count, 5)
+    }
+
+    func testLoadsNonBundledIOSBuildLibraryManifestAndRequiredConfig() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("examples/ios-build-library")
+
+        let plugin = try PluginLoader().load(from: root)
+        let schema = try XCTUnwrap(plugin.configSchema)
+        let libraryRoot = try XCTUnwrap(schema.properties["library_root"])
+
+        XCTAssertEqual(plugin.manifest.id, "ios-build-library")
+        XCTAssertEqual(
+            plugin.manifest.description,
+            "Indexes a staged folder of exported iOS IPA builds and shows valid and invalid entries."
+        )
+        XCTAssertEqual(plugin.manifest.brew, [])
+        XCTAssertEqual(plugin.manifest.depends["native.jobs"], "1")
+        XCTAssertEqual(plugin.manifest.depends["native.artifact-delivery"], "1")
+        XCTAssertEqual(plugin.manifest.checks.map(\.id), ["library", "builds", "invalid"])
+        XCTAssertEqual(plugin.manifest.actions.map(\.id), ["rescan", "cleanup"])
+        XCTAssertEqual(plugin.manifest.ui.pages.filter { $0.kind == .artifacts }.map(\.source), ["checks.builds"])
+        XCTAssertEqual(plugin.manifest.ui.pages.filter { $0.kind == .form }.map(\.source), ["config"])
+        XCTAssertNotNil(libraryRoot.warning)
+        XCTAssertTrue(libraryRoot.required)
+        XCTAssertNil(libraryRoot.defaultValue)
+        XCTAssertEqual(libraryRoot.writeOnly, false)
+        XCTAssertEqual(
+            PluginSetupRequirement.classify(
+                configSchema: schema, tcc: [], doctorIssue: nil,
+                configurationIssue: "missing required config value library_root"
+            ),
+            .configurationRequired
+        )
+        XCTAssertThrowsError(try schema.validated(values: [:]))
+        XCTAssertNoThrow(try schema.validated(values: ["library_root": .string("~/iOS Builds")]))
+    }
+
+    func testArtifactDeliveryRejectsTraversalAndEscapesManifestText() throws {
+        XCTAssertThrowsError(try ArtifactDelivery.libraryRoot("/tmp/builds", home: "/Users/example"))
+        let plist = String(data: ArtifactDelivery.manifestPlist(
+            grant: ArtifactGrant(
+                pluginID: "ios-build-library", artifactID: "b-1", sha256: "abc", size: 12,
+                fileURL: URL(fileURLWithPath: "/tmp/app.ipa"), bundleID: "ex&id", version: "1.0",
+                title: "A <B>", expiresAt: Date(), remainingManifestGets: 1, remainingIPAGets: 1
+            ),
+            ipaURL: "https://example.ts.net/ota/token/app.ipa"
+        ), encoding: .utf8)
+        XCTAssertTrue(plist?.contains("ex&amp;id") == true)
+        XCTAssertTrue(plist?.contains("A &lt;B&gt;") == true)
+        XCTAssertFalse(plist?.contains("A <B>") == true)
     }
 
     func testRejectsUnsupportedAPI() throws {
@@ -698,6 +780,126 @@ final class RuntimeTests: XCTestCase {
         await runtime.shutdown()
     }
 
+    @MainActor
+    func testRemoteCatalogInstallRejectsUnknownAndMismatchedEntries() async throws {
+        let root = try temporaryPlugin(manifest: """
+        id = "catalog-host"
+        name = "Catalog Host"
+        version = "1.0.0"
+        kiwios_api = "1"
+        license = "MIT"
+        """)
+        let runtime = HubRuntime(pluginRoot: root, storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+        runtime.mode = .remote
+        runtime.remote.enabled = true
+        let identity = RemoteIdentity(login: "owner@example", displayName: "Owner")
+        let entry = CuratedPluginEntry(
+            id: "xcodes", name: "Xcodes",
+            repository: "https://github.com/ignaciojuarez/kiwios-xcodes",
+            commit: "0123456789abcdef0123456789abcdef01234567",
+            path: ".", version: "0.1.0", kiwiosAPI: "1", license: "MIT",
+            description: "Inventory of installed and available Xcodes, simulator runtimes, and devices."
+        )
+        runtime.curatedEntries = [entry]
+        let unknown = try JSONDecoder().decode(RemoteMutation.self, from: Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000050","operation":"requestPluginInstall","repository":"https://github.com/ignaciojuarez/kiwios-xcodes","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":".","catalogID":"missing"}"#.utf8
+        ))
+        do {
+            _ = try await runtime.remoteMutate(unknown, identity: identity, deadline: RemoteRequestDeadline(after: .seconds(2)))
+            XCTFail("unknown catalog IDs must be rejected")
+        } catch PolicyError.blocked(let reason) {
+            XCTAssertEqual(reason, "Unknown catalog plugin")
+        }
+        let mismatched = try JSONDecoder().decode(RemoteMutation.self, from: Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000051","operation":"requestPluginInstall","repository":"https://github.com/example/other","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":".","catalogID":"xcodes"}"#.utf8
+        ))
+        do {
+            _ = try await runtime.remoteMutate(mismatched, identity: identity, deadline: RemoteRequestDeadline(after: .seconds(2)))
+            XCTFail("client catalog fields must match the bundled entry")
+        } catch PolicyError.blocked(let reason) {
+            XCTAssertEqual(reason, "Catalog install fields do not match the bundled catalog entry")
+        }
+        await runtime.shutdown()
+    }
+
+    @MainActor
+    func testRemoteSnapshotIncludesCatalogAndPluginSearch() async throws {
+        let root = try temporaryPlugin(manifest: """
+        id = "snapshot-host"
+        name = "Snapshot Host"
+        version = "1.0.0"
+        kiwios_api = "1"
+        license = "MIT"
+        """)
+        let runtime = HubRuntime(pluginRoot: root, storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+        runtime.mode = .remote
+        runtime.remote.enabled = true
+        runtime.curatedEntries = [
+            CuratedPluginEntry(
+                id: "xcodes", name: "Xcodes",
+                repository: "https://github.com/ignaciojuarez/kiwios-xcodes",
+                commit: "0123456789abcdef0123456789abcdef01234567",
+                path: ".", version: "0.1.0", kiwiosAPI: "1", license: "MIT",
+                description: "Inventory of installed and available Xcodes, simulator runtimes, and devices."
+            )
+        ]
+        runtime.pluginSearchQuery = "xcodes"
+        runtime.pluginSearchError = "GitHub search is rate limited; try again later"
+        let data = try await runtime.remoteSnapshot(
+            for: RemoteIdentity(login: "owner@example", displayName: "Owner"),
+            deadline: RemoteRequestDeadline(after: .seconds(2))
+        )
+        let snapshot = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let catalog = try XCTUnwrap(snapshot["catalog"] as? [[String: Any]])
+        XCTAssertEqual(catalog.first?["id"] as? String, "xcodes")
+        XCTAssertEqual(catalog.first?["kiwiosAPI"] as? String, "1")
+        XCTAssertEqual(catalog.first?["description"] as? String, "Inventory of installed and available Xcodes, simulator runtimes, and devices.")
+        let search = try XCTUnwrap(snapshot["pluginSearch"] as? [String: Any])
+        XCTAssertEqual(search["query"] as? String, "xcodes")
+        XCTAssertEqual(search["error"] as? String, "GitHub search is rate limited; try again later")
+        XCTAssertEqual((search["results"] as? [Any])?.count, 0)
+        XCTAssertTrue(search["searchedAt"] is NSNull || search["searchedAt"] == nil)
+        XCTAssertEqual(snapshot["installingPluginIDs"] as? [String], [])
+        let plugins = try XCTUnwrap(snapshot["plugins"] as? [[String: Any]])
+        XCTAssertTrue(plugins.first?["sourceRepository"] is NSNull || plugins.first?["sourceRepository"] == nil)
+        runtime.pluginTransitions.insert("snapshot-host")
+        let installing = try await runtime.remoteSnapshot(
+            for: RemoteIdentity(login: "owner@example", displayName: "Owner"),
+            deadline: RemoteRequestDeadline(after: .seconds(2))
+        )
+        let installingSnapshot = try XCTUnwrap(try JSONSerialization.jsonObject(with: installing) as? [String: Any])
+        XCTAssertEqual(installingSnapshot["installingPluginIDs"] as? [String], ["snapshot-host"])
+        await runtime.shutdown()
+    }
+
+    @MainActor
+    func testRemotePluginSearchMapsInvalidQueryIntoSnapshotError() async throws {
+        let root = try temporaryPlugin(manifest: """
+        id = "search-host"
+        name = "Search Host"
+        version = "1.0.0"
+        kiwios_api = "1"
+        license = "MIT"
+        """)
+        let runtime = HubRuntime(pluginRoot: root, storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+        runtime.mode = .remote
+        runtime.remote.enabled = true
+        let mutation = try JSONDecoder().decode(RemoteMutation.self, from: Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000052","operation":"searchPlugins","query":"\#(String(repeating: "a", count: 101))"}"#.utf8
+        ))
+        _ = try await runtime.remoteMutate(
+            mutation, identity: RemoteIdentity(login: "owner@example", displayName: "Owner"),
+            deadline: RemoteRequestDeadline(after: .seconds(2))
+        )
+        XCTAssertEqual(runtime.pluginSearchError, PluginCatalogError.invalidQuery.errorDescription)
+        XCTAssertTrue(runtime.pluginSearchResults.isEmpty)
+        XCTAssertNotNil(runtime.pluginSearchSearchedAt)
+        await runtime.shutdown()
+    }
+
     private func temporaryPlugin(manifest: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -736,6 +938,20 @@ final class RuntimeTests: XCTestCase {
     private func makeExecutable(at url: URL, contents: String) throws {
         try Data(contents.utf8).write(to: url)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    private func runMonitor(mode: String, tools: URL) throws -> (status: Int32, output: String) {
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("plugins/monitor/monitor.sh")
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path, mode]
+        process.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
     }
 }
 

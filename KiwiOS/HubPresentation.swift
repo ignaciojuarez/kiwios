@@ -32,4 +32,6 @@ struct RemoteAccessState: Sendable {
     var pluginEnableChallenges: [String: RemotePluginEnableChallenge] = [:]
     var installationChallenges: [String: RemoteInstallationChallenge] = [:]
     var removalChallenges: [String: RemoteRemovalChallenge] = [:]
+    var artifactChallenges: [String: ArtifactInstallChallenge] = [:]
+    var artifactGrants: [String: ArtifactGrant] = [:]
 }

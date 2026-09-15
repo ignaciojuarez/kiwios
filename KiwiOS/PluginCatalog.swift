@@ -13,6 +13,7 @@ struct PluginCatalogResult: Identifiable, Equatable, Sendable {
 struct CuratedPluginEntry: Codable, Identifiable, Equatable, Sendable {
     let id: String
     let name: String
+    let description: String?
     let repository: String
     let commit: String
     let path: String
@@ -21,16 +22,17 @@ struct CuratedPluginEntry: Codable, Identifiable, Equatable, Sendable {
     let license: String
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, name, repository, commit, path, version, license
+        case id, name, description, repository, commit, path, version, license
         case kiwiosAPI = "kiwios_api"
     }
 
     init(
         id: String, name: String, repository: String, commit: String, path: String,
-        version: String, kiwiosAPI: String, license: String
+        version: String, kiwiosAPI: String, license: String, description: String? = nil
     ) {
         self.id = id
         self.name = name
+        self.description = description
         self.repository = repository
         self.commit = commit
         self.path = path
@@ -44,6 +46,7 @@ struct CuratedPluginEntry: Codable, Identifiable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
         repository = try container.decode(String.self, forKey: .repository)
         commit = try container.decode(String.self, forKey: .commit)
         path = try container.decode(String.self, forKey: .path)
@@ -57,7 +60,8 @@ struct CuratedPluginEntry: Codable, Identifiable, Equatable, Sendable {
             throw PluginCatalogError.invalidCuratedCatalog("invalid plugin ID \(id)")
         }
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !license.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+              !license.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true else {
             throw PluginCatalogError.invalidCuratedCatalog("\(id) has blank metadata")
         }
         guard (try? PluginRepositoryIdentity(repository).canonical) == repository else {
@@ -150,7 +154,10 @@ actor PluginCatalog {
         guard let url = Bundle.main.url(forResource: "catalog", withExtension: "json", subdirectory: "catalog") else {
             throw PluginCatalogError.invalidCuratedCatalog("catalog/catalog.json is missing")
         }
-        let data = try Data(contentsOf: url)
+        return try Self.decodeCuratedEntries(from: Data(contentsOf: url))
+    }
+
+    nonisolated static func decodeCuratedEntries(from data: Data) throws -> [CuratedPluginEntry] {
         guard data.count <= 1024 * 1024 else {
             throw PluginCatalogError.invalidCuratedCatalog("catalog.json exceeds 1 MiB")
         }
@@ -176,8 +183,11 @@ actor PluginCatalog {
     }
 
     func search(_ text: String) async throws -> [PluginCatalogResult] {
+        guard !text.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw PluginCatalogError.invalidQuery
+        }
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.count <= 100, !query.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+        guard query.count <= 100 else {
             throw PluginCatalogError.invalidQuery
         }
         let cacheKey = query.lowercased()

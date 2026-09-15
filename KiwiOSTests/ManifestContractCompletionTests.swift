@@ -279,6 +279,9 @@ final class ManifestContractCompletionTests: XCTestCase {
     func testRemotePluginLifecycleMutationShapesAreExact() throws {
         let accepted = [
             #"{"requestID":"00000000-0000-0000-0000-000000000006","operation":"requestPluginInstall","repository":"https://github.com/example/plugin"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000040","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":".","catalogID":"example.plugin"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000041","operation":"searchPlugins","query":""}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000042","operation":"searchPlugins","query":"xcodes"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000020","operation":"requestPluginUpdate","pluginID":"monitor"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000007","operation":"confirmPluginInstall","confirmationToken":"token"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000018","operation":"requestPluginDependencies","pluginID":"monitor"}"#,
@@ -295,6 +298,10 @@ final class ManifestContractCompletionTests: XCTestCase {
             #"{"requestID":"00000000-0000-0000-0000-000000000010","operation":"requestPluginInstall"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000021","operation":"requestPluginUpdate"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000011","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000043","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":"."}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000044","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","catalogID":"example.plugin"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000045","operation":"searchPlugins"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000046","operation":"searchPlugins","query":null}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000012","operation":"confirmPluginInstall","confirmationToken":"token","pluginID":"monitor"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000017","operation":"confirmPluginEnable","confirmationToken":"token","pluginID":"monitor"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000019","operation":"requestPluginDependencies","pluginID":"monitor","confirmationToken":"token"}"#,
@@ -304,6 +311,64 @@ final class ManifestContractCompletionTests: XCTestCase {
         for json in rejected {
             XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(json.utf8)))
         }
+        let catalogInstall = Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000040","operation":"requestPluginInstall","repository":"https://github.com/example/plugin","commit":"0123456789abcdef0123456789abcdef01234567","pluginPath":".","catalogID":"example.plugin"}"#.utf8
+        )
+        let catalogMutation = try JSONDecoder().decode(RemoteMutation.self, from: catalogInstall)
+        XCTAssertEqual(catalogMutation.catalogID, "example.plugin")
+        XCTAssertEqual(catalogMutation.commit, "0123456789abcdef0123456789abcdef01234567")
+        XCTAssertEqual(catalogMutation.pluginPath, ".")
+        let search = try JSONDecoder().decode(RemoteMutation.self, from: Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000041","operation":"searchPlugins","query":""}"#.utf8
+        ))
+        XCTAssertEqual(search.operation, .searchPlugins)
+        XCTAssertEqual(search.query, "")
+    }
+
+    func testCuratedCatalogDecoderRejectsUnknownKeysAndInvalidRevisions() throws {
+        let valid = Data(#"""
+        {"version":1,"plugins":[{"id":"example.plugin","name":"Example","description":"Reviewed example subtitle","repository":"https://github.com/example/kiwios-plugin","commit":"0123456789abcdef0123456789abcdef01234567","path":".","version":"1.2.0","kiwios_api":"1","license":"MIT"}]}
+        """#.utf8)
+        let decoded = try PluginCatalog.decodeCuratedEntries(from: valid)
+        XCTAssertEqual(decoded.map(\.id), ["example.plugin"])
+        XCTAssertEqual(decoded.first?.description, "Reviewed example subtitle")
+        XCTAssertEqual(try PluginCatalog.decodeCuratedEntries(from: Data(#"""
+        {"version":1,"plugins":[{"id":"example.plugin","name":"Example","repository":"https://github.com/example/kiwios-plugin","commit":"0123456789abcdef0123456789abcdef01234567","path":".","version":"1.2.0","kiwios_api":"1","license":"MIT"}]}
+        """#.utf8)).first?.description, nil)
+        XCTAssertThrowsError(try PluginCatalog.decodeCuratedEntries(from: Data(#"""
+        {"version":1,"plugins":[{"id":"example.plugin","name":"Example","repository":"https://github.com/example/kiwios-plugin","commit":"0123456789abcdef0123456789abcdef01234567","path":".","version":"1.2.0","kiwios_api":"1","license":"MIT","extra":true}]}
+        """#.utf8)))
+        XCTAssertThrowsError(try PluginCatalog.decodeCuratedEntries(from: Data(#"""
+        {"version":1,"plugins":[{"id":"example.plugin","name":"Example","description":"   ","repository":"https://github.com/example/kiwios-plugin","commit":"0123456789abcdef0123456789abcdef01234567","path":".","version":"1.2.0","kiwios_api":"1","license":"MIT"}]}
+        """#.utf8)))
+        XCTAssertThrowsError(try PluginCatalog.decodeCuratedEntries(from: Data(#"""
+        {"version":1,"plugins":[{"id":"example.plugin","name":"Example","repository":"https://github.com/Example/kiwios-plugin","commit":"0123456789abcdef0123456789abcdef01234567","path":".","version":"1.2.0","kiwios_api":"1","license":"MIT"}]}
+        """#.utf8)))
+        XCTAssertThrowsError(try PluginCatalog.decodeCuratedEntries(from: Data(#"""
+        {"version":1,"plugins":[{"id":"example.plugin","name":"Example","repository":"https://github.com/example/kiwios-plugin","commit":"MAIN","path":".","version":"1.2.0","kiwios_api":"1","license":"MIT"}]}
+        """#.utf8)))
+        let empty = Data(#"{"$schema":"catalog.schema.json","version":1,"plugins":[]}"#.utf8)
+        XCTAssertEqual(try PluginCatalog.decodeCuratedEntries(from: empty), [])
+        let catalogURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("catalog/catalog.json")
+        let bundled = try PluginCatalog.decodeCuratedEntries(from: Data(contentsOf: catalogURL))
+        XCTAssertEqual(Set(bundled.map(\.id)), ["ios-build-library", "xcodes"])
+        XCTAssertEqual(bundled.map(\.path), [".", "."])
+    }
+
+    func testPluginSearchRejectsOversizedAndControlQueries() async {
+        let catalog = PluginCatalog()
+        do {
+            _ = try await catalog.search(String(repeating: "a", count: 101))
+            XCTFail("oversized search must fail closed")
+        } catch PluginCatalogError.invalidQuery {}
+        catch { XCTFail("unexpected error \(error)") }
+        do {
+            _ = try await catalog.search("xcodes\n")
+            XCTFail("control characters must fail closed")
+        } catch PluginCatalogError.invalidQuery {}
+        catch { XCTFail("unexpected error \(error)") }
     }
 
     func testPluginUpdaterRequiresAValidHeadAndNewerSemanticVersion() throws {
@@ -343,6 +408,8 @@ final class ManifestContractCompletionTests: XCTestCase {
             #"{"requestID":"00000000-0000-0000-0000-000000000014","operation":"confirmNativeOperation","confirmationToken":"token"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000015","operation":"probeSSH","peerName":"Server"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000016","operation":"deliverNotification","title":"KiwiOS","body":"Done"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000028","operation":"requestArtifactInstall","pluginID":"ios-build-library","artifactID":"b-abc"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000029","operation":"confirmArtifactInstall","confirmationToken":"token"}"#,
         ]
         for json in accepted {
             let data = Data(json.utf8)
@@ -356,6 +423,8 @@ final class ManifestContractCompletionTests: XCTestCase {
             #"{"requestID":"00000000-0000-0000-0000-000000000024","operation":"requestLaunchAgentRestart"}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000025","operation":"requestLaunchAgentRestart","launchAgentLabel":"example.agent","pid":123}"#,
             #"{"requestID":"00000000-0000-0000-0000-000000000026","operation":"refreshNativeTools","pluginID":"unexpected"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000030","operation":"requestArtifactInstall","pluginID":"ios-build-library"}"#,
+            #"{"requestID":"00000000-0000-0000-0000-000000000031","operation":"confirmArtifactInstall","confirmationToken":"token","pluginID":"ios-build-library"}"#,
         ]
         for json in rejected {
             XCTAssertThrowsError(try RemoteServer.validateMutationShape(Data(json.utf8)))
@@ -413,7 +482,7 @@ final class ManifestContractCompletionTests: XCTestCase {
             contentDigest: "content", loadedPlugin: loaded
         )
         let installChallenge = RemoteInstallationChallenge(
-            identity: owner, review: installation, expiresAt: now.addingTimeInterval(60)
+            identity: owner, review: installation, missingBrew: [], expiresAt: now.addingTimeInterval(60)
         )
         let removalChallenge = RemoteRemovalChallenge(
             identity: owner, review: PluginRemovalReview(pluginID: "reviewed", name: "Reviewed", homebrew: []),
@@ -491,11 +560,11 @@ final class ManifestContractCompletionTests: XCTestCase {
 
     func testPluginSetupRequirementSeparatesConfigurationAndAuthorization() {
         let publicConfig = PluginConfigSchema(title: nil, description: nil, properties: [
-            "endpoint": PluginConfigField(type: .string, title: nil, description: nil,
+            "endpoint": PluginConfigField(type: .string, title: nil, description: nil, warning: nil,
                 enumValues: nil, defaultValue: nil, writeOnly: false, required: true),
         ])
         let secretConfig = PluginConfigSchema(title: nil, description: nil, properties: [
-            "token": PluginConfigField(type: .string, title: nil, description: nil,
+            "token": PluginConfigField(type: .string, title: nil, description: nil, warning: nil,
                 enumValues: nil, defaultValue: nil, writeOnly: true, required: true),
         ])
         let authorization = DoctorFinding(id: "accessibility", title: "Accessibility", status: .blocked, detail: "Grant access")

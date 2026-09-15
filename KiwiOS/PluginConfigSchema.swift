@@ -8,6 +8,7 @@ struct PluginConfigField: Equatable, Sendable {
     let type: PluginConfigFieldType
     let title: String?
     let description: String?
+    let warning: String?
     let enumValues: [JSONValue]?
     let defaultValue: JSONValue?
     let writeOnly: Bool
@@ -67,7 +68,7 @@ struct PluginConfigSchema: Equatable, Sendable {
                 throw PluginLoadError.invalidConfigSchema("property \(name) must be an object")
             }
             try rejectUnknown(
-                field, allowed: ["type", "title", "description", "enum", "default", "writeOnly"],
+                field, allowed: ["type", "title", "description", "warning", "enum", "default", "writeOnly"],
                 scope: "properties.\(name)"
             )
             guard case .string(let rawType)? = field["type"], let type = PluginConfigFieldType(rawValue: rawType) else {
@@ -106,6 +107,7 @@ struct PluginConfigSchema: Equatable, Sendable {
                 type: type,
                 title: try optionalString(field["title"], at: "properties.\(name).title"),
                 description: try optionalString(field["description"], at: "properties.\(name).description"),
+                warning: try optionalString(field["warning"], at: "properties.\(name).warning"),
                 enumValues: enumValues,
                 defaultValue: defaultValue,
                 writeOnly: writeOnly,
