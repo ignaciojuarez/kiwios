@@ -27,10 +27,11 @@
     <main>
       <header>
         <button id="back" class="quiet hidden" type="button">← Back</button>
-        <div>
+        <div class="header-title">
           <p id="eyebrow">System / Overview</p>
           <h1 id="title">Home</h1>
         </div>
+        <div id="page-actions" class="page-actions" aria-label="Page actions"></div>
         <span id="connection" class="connection">Connecting</span>
       </header>
       <div id="notice" class="notice hidden" role="status"></div>
@@ -38,21 +39,14 @@
     </main>
   </div>
   <dialog id="confirmation" aria-labelledby="confirmation-title">
-    <form method="dialog">
+    <div>
       <h2 id="confirmation-title">Run action?</h2>
       <p id="confirmation-detail"></p>
       <div class="dialog-actions">
-        <button value="cancel" class="quiet">Cancel</button>
-        <button id="confirm-action" value="default">Run action</button>
+        <button id="cancel-confirmation" type="button" class="quiet">Cancel</button>
+        <button id="confirm-action" type="button">Run action</button>
       </div>
-    </form>
-  </dialog>
-  <dialog id="dependency-alert" aria-labelledby="dependency-title">
-    <form method="dialog">
-      <h2 id="dependency-title">Install dependencies on the Mac</h2>
-      <p id="dependency-detail"></p>
-      <div class="dialog-actions"><button value="close">Close</button></div>
-    </form>
+    </div>
   </dialog>
   <dialog id="widget-picker" aria-labelledby="widget-picker-title">
     <div class="widget-picker-header">
@@ -61,6 +55,20 @@
     </div>
     <div id="widget-picker-list" class="widget-picker-list" aria-label="Available widgets"></div>
     <form method="dialog" class="dialog-actions"><button class="quiet" value="close">Close</button></form>
+  </dialog>
+  <dialog id="plugin-install" aria-labelledby="plugin-install-title">
+    <form id="plugin-install-form" method="dialog">
+      <h2 id="plugin-install-title">Add plugin</h2>
+      <label for="plugin-repository">GitHub repository URL</label>
+      <input id="plugin-repository" type="url" required autocomplete="off" maxlength="256" placeholder="https://github.com/owner/repository">
+      <div class="dialog-actions">
+        <button id="plugin-install-cancel" type="button" class="quiet">Cancel</button>
+        <button value="default">Add</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="plugin-configuration" aria-labelledby="plugin-configuration-title">
+    <div id="plugin-configuration-content"></div>
   </dialog>
 </body>
 </html>

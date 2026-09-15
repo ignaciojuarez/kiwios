@@ -282,9 +282,10 @@ actor RemoteServer {
         case .refreshCheck, .requestAction: fields = ["pluginID", "contributionID"]
         case .confirmAction: fields = ["confirmationToken"]
         case .cancelJob: fields = ["jobID"]
-        case .disablePlugin, .enablePlugin, .requestPluginRemoval: fields = ["pluginID"]
-        case .requestPluginInstall: fields = ["repository", "commit", "pluginPath"]
-        case .confirmPluginInstall, .confirmPluginRemoval: fields = ["confirmationToken"]
+        case .disablePlugin, .enablePlugin, .requestPluginDependencies, .requestPluginUpdate,
+             .requestPluginRemoval: fields = ["pluginID"]
+        case .requestPluginInstall: fields = ["repository"]
+        case .confirmPluginEnable, .confirmPluginInstall, .confirmPluginRemoval: fields = ["confirmationToken"]
         case .saveConfig: fields = ["pluginID", "values", "configRevision"]
         case .refreshDoctor, .reloadPlugins, .refreshNativeTools: fields = []
         case .saveLayout: fields = ["widgets", "hiddenWidgets", "wideWidgets", "sidebar"]

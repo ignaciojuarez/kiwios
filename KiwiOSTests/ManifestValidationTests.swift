@@ -5,6 +5,8 @@ final class ManifestValidationTests: XCTestCase {
     func testLoadsCompleteManifestAndDecodesDurations() throws {
         let root = try temporaryPlugin(manifest: baseManifest + """
 
+        description = "A complete manifest fixture."
+
         [[checks]]
         id = "health"
         label = "Health"
@@ -66,6 +68,7 @@ final class ManifestValidationTests: XCTestCase {
         XCTAssertEqual(manifest.ui.sidebar.first?.page, "status")
         XCTAssertEqual(manifest.ui.widgets.first?.source, "checks.health")
         XCTAssertEqual(manifest.brew, [])
+        XCTAssertEqual(manifest.description, "A complete manifest fixture.")
     }
 
     func testValidatesAndDetectsHomebrewRequirements() throws {

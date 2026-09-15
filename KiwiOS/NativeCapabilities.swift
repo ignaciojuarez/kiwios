@@ -295,9 +295,6 @@ actor NativeCapabilities {
             }
             _ = try Self.homebrewExecutable()
         case .homebrewInstall(let packages):
-            guard mode == .setup else {
-                throw NativeCapabilityError.blocked("Homebrew changes are disabled in remote policy mode")
-            }
             guard !packages.isEmpty, packages.count <= 50,
                   packages.allSatisfy(Self.validCoreBrewFormula) else {
                 throw NativeCapabilityError.blocked("Choose 1–50 valid Homebrew core formula names")

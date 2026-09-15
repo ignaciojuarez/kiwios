@@ -84,6 +84,7 @@ struct RemoteNativeChallenge: Sendable {
     let identity: RemoteIdentity
     let operation: NativeOperation
     let expiresAt: Date
+    let originPluginID: String?
 
     func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {
         identity == candidate && expiresAt > now
@@ -93,6 +94,16 @@ struct RemoteNativeChallenge: Sendable {
 struct RemoteInstallationChallenge: Sendable {
     let identity: RemoteIdentity
     let review: InstallationReview
+    let expiresAt: Date
+
+    func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {
+        identity == candidate && expiresAt > now
+    }
+}
+
+struct RemotePluginEnableChallenge: Sendable {
+    let identity: RemoteIdentity
+    let review: PluginReview
     let expiresAt: Date
 
     func isValid(for candidate: RemoteIdentity, now: Date = Date()) -> Bool {
@@ -127,6 +138,7 @@ extension HubRuntime {
                     try await configuration.validateForUpdate(plugin)
                 }
             }, existingPlugin: { [weak self] id in await self?.loaded[id] })
+        startPluginUpdateChecks()
         if let installer {
             for record in installedRecords.values {
                 guard let commit = record.sourceCommit else { continue }
@@ -151,9 +163,20 @@ extension HubRuntime {
         } catch { operationError = error.localizedDescription }
         // A malformed saved peer must not prevent independent remote recovery.
         guard !stopped, !Task.isCancelled else { return }
+        refreshNativeToolsIfNeeded()
         await restoreRemoteAccess()
         guard !stopped, !Task.isCancelled else { return }
     }
+
+    func refreshNativeToolsIfNeeded(now: Date = Date()) {
+        guard NativeToolsRefreshPolicy.needsRefresh(
+            sampledAt: native.toolsSnapshot?.sampledAt,
+            isRefreshing: native.toolsRefreshing,
+            now: now
+        ) else { return }
+        startNativeToolsRefresh()
+    }
+
     func refreshNativeTools() async {
         guard !stopped, !Task.isCancelled, !native.toolsRefreshing else { return }
         native.toolsRefreshing = true
@@ -265,10 +288,13 @@ extension HubRuntime {
     ) async throws {
         try requireAdmissionsOpen()
         if let originPluginID {
-            guard let record = try await store?.plugin(id: originPluginID), record.enabled,
-                  [.active, .needsSetup, .missingDependency].contains(
-                    plugins.first(where: { $0.id == originPluginID })?.lifecycle
-                  ) else {
+            let dependencyInstall: Bool
+            if case .homebrewInstall = operation { dependencyInstall = true } else { dependencyInstall = false }
+            guard let record = try await store?.plugin(id: originPluginID),
+                  record.enabled || dependencyInstall,
+                  let lifecycle = plugins.first(where: { $0.id == originPluginID })?.lifecycle,
+                  [.active, .needsSetup, .missingDependency].contains(lifecycle)
+                    || (dependencyInstall && [.disabled, .error].contains(lifecycle)) else {
                 throw PolicyError.blocked("The plugin requesting this dependency is no longer added")
             }
         }
@@ -462,6 +488,41 @@ extension HubRuntime {
         do { marketplaceResults = try await pluginCatalog.search(query) }
         catch { operationError = error.localizedDescription }
     }
+    func startPluginUpdateChecks() {
+        pluginUpdateTask?.cancel()
+        pluginUpdateTask = Task { [weak self] in
+            while !Task.isCancelled, let self, !self.stopped {
+                await self.refreshPluginUpdates()
+                do { try await Task.sleep(for: .seconds(15 * 60)) }
+                catch { return }
+            }
+        }
+    }
+    private func refreshPluginUpdates() async {
+        guard let installer else { return }
+        let records = installedRecords.values.filter {
+            $0.sourceRepository != nil && $0.sourceCommit != nil
+        }
+        var updates: [String: PluginUpdate] = [:]
+        await withTaskGroup(of: (String, PluginUpdate?).self) { group in
+            for record in records {
+                group.addTask {
+                    guard let repository = record.sourceRepository, let commit = record.sourceCommit else {
+                        return (record.id, nil)
+                    }
+                    let update = try? await installer.availableUpdate(repository: repository,
+                        currentCommit: commit, pluginPath: record.sourcePath ?? ".",
+                        pluginID: record.id, currentVersion: record.version)
+                    return (record.id, update)
+                }
+            }
+            for await (id, update) in group {
+                if let update { updates[id] = update }
+            }
+        }
+        guard !Task.isCancelled, !stopped else { return }
+        pluginUpdates = updates
+    }
     func stageCuratedInstallation(_ entry: CuratedPluginEntry) async {
         await stageInstallation(repository: entry.repository, commit: entry.commit, path: entry.path, expectedEntry: entry)
     }
@@ -506,7 +567,8 @@ extension HubRuntime {
             let installed = try await installer.commit(reviewID: review.id)
             let record = PluginRecord(id: review.pluginID, name: installed.plugin.manifest.name,
                 version: installed.plugin.manifest.version, sourceRepository: installed.repository,
-                sourceCommit: installed.commit, manifestDigest: installed.manifestDigest,
+                sourceCommit: installed.commit, sourcePath: review.pluginPath,
+                manifestDigest: installed.manifestDigest,
                 contentDigest: installed.contentDigest, enabled: true,
                 lifecycleState: PluginLifecycle.needsSetup.rawValue, updatedAt: Date())
             let approval = ApprovalRecord(pluginID: review.pluginID, manifestDigest: installed.manifestDigest,
@@ -514,6 +576,7 @@ extension HubRuntime {
                 sourceRepository: installed.repository, sourceCommit: installed.commit,
                 approvedBy: "local", approvedAt: Date())
             try await store.activateInstalledPlugin(record, approval: approval)
+            pluginUpdates.removeValue(forKey: review.pluginID)
             pendingInstallation = nil
             await queue?.cancelPlugin(review.pluginID, requestedBy: "local")
             await queue?.waitForPluginToStop(review.pluginID)

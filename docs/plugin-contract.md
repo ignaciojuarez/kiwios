@@ -18,6 +18,7 @@ A plugin is a trusted folder containing `plugin.toml` and executable commands. T
 ```toml
 id = "hello-check"
 name = "Hello"
+description = "A short summary shown on the Plugins card."
 version = "0.1.0"
 kiwios_api = "1"
 license = "MIT"
@@ -53,13 +54,13 @@ source = "checks.hello"
 size = "1x1"
 ```
 
-Required top-level fields are `id`, `name`, `version`, `kiwios_api`, and `license`. `version` is SemVer 2.0. `kiwios_api` is an exact string; an API 1 host rejects any other value.
+Required top-level fields are `id`, `name`, `version`, `kiwios_api`, and `license`. `description` is an optional, nonblank summary displayed on the Plugins card. `version` is SemVer 2.0. `kiwios_api` is an exact string; an API 1 host rejects any other value.
 
 Plugin IDs match `[a-z0-9]+(?:[.-][a-z0-9]+)*`. Contribution IDs match `[a-z0-9]+(?:-[a-z0-9]+)*` and are unique within their table. KiwiOS exposes them as `<plugin-id>/<contribution-id>`. IDs are stable storage and layout keys and must not change during an ordinary update.
 
 Each widget declares `size = "1x1"` or `size = "2x1"`. This is its fixed Home presentation width: compact widgets remain one column and wide widgets span two.
 
-`brew` is an optional list of unique Homebrew core formula names. KiwiOS shows every declared formula as installed or missing and blocks the plugin until all are installed. In attended setup, the operator can review the exact missing formulae and confirm a KiwiOS-managed `brew install --formula` job. Formula detection supports the standard Apple Silicon and Intel Homebrew Cellars. KiwiOS does not install Homebrew itself.
+`brew` is an optional list of unique Homebrew core formula names. KiwiOS shows every declared formula as installed or missing and blocks the plugin until all are installed. The web UI can present an identity-bound confirmation for the exact missing formulae of an already approved plugin, then queue a local KiwiOS-managed `brew install --formula` job. Formula detection supports the standard Apple Silicon and Intel Homebrew Cellars. KiwiOS does not install Homebrew itself.
 
 The formula is a host requirement, not content embedded in the plugin. KiwiOS remembers only formulae it installed. When an installed plugin is removed, KiwiOS may offer to uninstall an owned formula after checking other plugin declarations and installed Homebrew reverse dependencies. Pre-existing or unverifiable formulae are retained, and the operator sees and controls the exact uninstall selection.
 
@@ -169,6 +170,8 @@ A property with `"writeOnly": true` is stored under `<plugin-id>.config.<field>`
 
 Native and remote editors submit changed fields with the public configuration revision they loaded. SQLite compares that revision atomically and rejects stale saves; a rejected save preserves the draft for review. Schema defaults are applied by validation. A required enum without a default requires an explicit choice. SQLite is the authoritative public store; `config.json` is derived again before execution, so a materialization failure blocks launch without losing a committed save.
 
+KiwiOS exposes every schema-backed configuration through its plugin Configure dialog. A schema containing only public fields can be edited there remotely; a schema containing a write-only Keychain field instead directs the user to Attended Setup on the Mac mini. The dialog always remains available for a plugin with configuration options. If unmet public configuration is the only setup blocker, saving it promotes the already-approved plugin automatically; the user can then turn it off with its normal switch.
+
 Configuration operations for one plugin are serialized across Keychain and SQLite. Ordinary secret-write failures restore previous Keychain values. An interrupted or uncompensated write leaves a durable recovery marker that blocks execution until every secret field is explicitly resaved during attended setup. Secret rollback values are never journaled outside Keychain.
 
 Discovery reports errors per source candidate and continues with healthy plugins. Every contender for a duplicate ID or canonical source conflict is excluded; no source wins by search order. App-bundled plugins use a stable KiwiOS identity because an app update or development build can legitimately move the bundle directory; legacy app-bundle paths migrate to that identity. Development and installed sources remain bound to their canonical directory or repository. Re-enabling a required dependency rechecks enabled dependents without requiring a full reload.
@@ -177,7 +180,7 @@ Writable state belongs in `KIWIOS_DATA_DIR`. Plugins must not modify their insta
 
 ## Lifecycle
 
-The visible states are `installed`, `needs-setup`, `active`, `disabled`, `missing-dependency`, and `error`. The UI presents these as one Add/Remove choice. Missing declared TCC or Keychain setup yields `needs-setup`; it never opens a remote prompt. Three consecutive crashes/timeouts of the same check or action yield `error` until the user retries or removes the plugin.
+The visible states are `installed`, `needs-setup`, `active`, `disabled`, `missing-dependency`, and `error`. The remote plugin protocol separately reports setup as `ready`, `configuration-required`, `authorization-required`, `attended-setup-required`, or `error`; the browser uses it to place Configure in place of the switch when configuration is incomplete. Ordinary enabled and disabled state is conveyed by the switch rather than a redundant badge. `Authorization needed` and `Error` are the only card badges. Missing declared TCC or Keychain setup yields `needs-setup`; it never opens a remote prompt. Three consecutive crashes/timeouts of the same check or action yield `error` until the source is enabled again or removed. A new or changed source receives the same web review before it can be enabled.
 
 ## Author tooling
 

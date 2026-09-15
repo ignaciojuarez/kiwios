@@ -14,6 +14,8 @@
   --warn: #ff9b42;
   --bad: #ff5262;
   --info: var(--orange);
+  --control-height: 36px;
+  --control-icon-size: 18px;
   font: 14px/1.5 ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
 }
 
@@ -181,7 +183,16 @@ header {
   border-bottom: 1px solid var(--line);
 }
 
-header > div { flex: 1; }
+.header-title { min-width: 0; flex: 1; }
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.page-actions .icon-button { font-size: 20px; line-height: 1; }
 h1, h2, p { margin-top: 0; }
 
 h1 {
@@ -250,15 +261,6 @@ h2 { letter-spacing: .035em; }
 }
 
 .home-dashboard { display: grid; gap: 12px; }
-
-.home-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.home-toolbar .detail { margin: 0; }
 
 .home-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -417,6 +419,48 @@ button.widget-control {
   text-transform: uppercase;
 }
 
+.plugin-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.plugin-summary {
+  min-width: 0;
+  flex: 1;
+}
+
+.plugin-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-card .plugin-title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.plugin-card .status-label { margin: 0; }
+.plugin-card .detail { margin: 5px 0 0; }
+.plugin-card .button-row { flex: none; margin-left: auto; justify-content: flex-end; }
+.plugin-card .plugin-configure { margin-top: 12px; }
+
+.plugin-grid {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .plugin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .stat-value {
   font-size: clamp(30px, 4vw, 46px);
   font-weight: 400;
@@ -495,7 +539,8 @@ button.widget-control {
 .dot.running { border-color: var(--info); background: var(--info); }
 
 button {
-  min-height: 34px;
+  min-height: var(--control-height);
+  height: var(--control-height);
   border: 1px solid var(--kiwi);
   border-radius: 2px;
   padding: 7px 11px;
@@ -510,16 +555,107 @@ button {
 button:hover:not(:disabled) { filter: brightness(1.12); }
 button:disabled { opacity: .38; cursor: default; }
 
-button.quiet {
+button.quiet,
+button[data-variant="quiet"] {
   border-color: var(--line-strong);
   background: var(--raised);
   color: var(--ink);
 }
 
-button.danger {
+button.danger,
+button[data-variant="danger"] {
   border-color: #6e2930;
   background: #241013;
   color: #ff9ba4;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.plugin-toggle {
+  --control-height: 36px;
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.plugin-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle-track {
+  display: block;
+  width: calc(var(--control-height) + 20px);
+  height: var(--control-height);
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  transition: border-color .15s, background .15s;
+}
+
+.toggle-track::after {
+  display: block;
+  width: calc(var(--control-height) - 10px);
+  height: calc(var(--control-height) - 10px);
+  background: var(--muted);
+  content: "";
+  transition: transform .15s, background .15s;
+}
+
+.plugin-toggle input:checked + .toggle-track {
+  border-color: var(--kiwi);
+  background: #1a2912;
+}
+
+.plugin-toggle input:checked + .toggle-track::after {
+  transform: translateX(calc(var(--control-height) - 16px));
+  background: var(--kiwi);
+}
+
+.plugin-toggle input:focus-visible + .toggle-track {
+  outline: 2px solid var(--kiwi);
+  outline-offset: 2px;
+}
+
+.plugin-toggle input:disabled + .toggle-track { opacity: .38; cursor: default; }
+
+.icon-button,
+button[data-size="square"] {
+  width: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0;
+}
+
+.icon-button svg {
+  display: block;
+  width: var(--control-icon-size);
+  height: var(--control-icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-width: 1.7;
+}
+
+.update-button { display: inline-flex; align-items: center; gap: 7px; }
+
+.update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 0 2px #ff610022;
 }
 
 button:focus-visible,
@@ -693,6 +829,25 @@ dialog {
   box-shadow: 0 30px 100px #000c;
 }
 
+#plugin-install form { display: grid; gap: 10px; }
+#plugin-install h2 { margin-bottom: 4px; }
+#plugin-install label { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+#plugin-install input { width: 100%; min-height: 40px; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 2px; background: #090c0a; color: var(--ink); }
+
+#plugin-configuration {
+  max-height: min(620px, calc(100dvh - 32px));
+}
+
+#plugin-configuration-content {
+  display: grid;
+  gap: 10px;
+  max-height: min(570px, calc(100dvh - 80px));
+  overflow: auto;
+}
+
+#plugin-configuration-content h2 { margin: 0; }
+#plugin-configuration-content .form { margin-top: 4px; }
+
 #widget-picker {
   width: min(560px, calc(100% - 32px));
   height: min(560px, calc(100dvh - 32px));
@@ -814,7 +969,7 @@ dialog::backdrop {
 
   .brand {
     grid-template-columns: 30px 1fr;
-    padding: 0 2px 10px;
+    padding: 0 96px 10px 2px;
   }
 
   .brand-mark { width: 30px; height: 30px; }
@@ -849,12 +1004,18 @@ dialog::backdrop {
   header { margin-bottom: 16px; padding-bottom: 14px; }
   h1 { font-size: 24px; }
   .card.wide { grid-column: auto; }
-  .home-toolbar { align-items: flex-start; }
   .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-grid .card.wide { grid-column: span 2; }
   .home-grid .card { min-height: 0; }
   .widget-add { min-height: 152px; }
-  .connection { min-height: 30px; font-size: 9px; }
+  .connection {
+    position: fixed;
+    top: 12px;
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 11;
+    min-height: 30px;
+    font-size: 9px;
+  }
   .row { flex-wrap: wrap; }
   .row button { min-height: 44px; margin-left: 19px; }
   .stat-value { font-size: 34px; }

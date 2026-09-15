@@ -114,6 +114,66 @@ final class RuntimeTests: XCTestCase {
         XCTAssertEqual(process.terminationStatus, 0)
         XCTAssertTrue(result.contains("Drive temperatures read successfully"))
         XCTAssertTrue(result.contains("\"temperature-c\":42"))
+        XCTAssertTrue(result.contains("\"value\":42"))
+    }
+
+    func testMonitorReportsCPUTemperatureFromMacmon() throws {
+        let tools = try temporaryStorage()
+        try makeExecutable(at: tools.appendingPathComponent("macmon"), contents: """
+        #!/bin/sh
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":39.75}}'
+        """)
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("plugins/monitor/monitor.sh")
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path, "cpu-temperature"]
+        process.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+
+        let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertTrue(result.contains("CPU temperature is 42.2 °C"))
+        XCTAssertTrue(result.contains("\"value\":42.2"))
+
+        let gpu = Process()
+        let gpuOutput = Pipe()
+        gpu.executableURL = URL(fileURLWithPath: "/bin/sh")
+        gpu.arguments = [script.path, "gpu-temperature"]
+        gpu.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
+        gpu.standardOutput = gpuOutput
+        try gpu.run()
+        gpu.waitUntilExit()
+
+        let gpuResult = String(decoding: gpuOutput.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(gpu.terminationStatus, 0)
+        XCTAssertTrue(gpuResult.contains("GPU temperature is 39.8 °C"))
+        XCTAssertTrue(gpuResult.contains("\"value\":39.8"))
+    }
+
+    func testMonitorRejectsImplausibleMacmonTemperature() throws {
+        let tools = try temporaryStorage()
+        try makeExecutable(at: tools.appendingPathComponent("macmon"), contents: """
+        #!/bin/sh
+        echo '{"temp":{"cpu_temp_avg":42.25,"gpu_temp_avg":2.4}}'
+        """)
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("plugins/monitor/monitor.sh")
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path, "gpu-temperature"]
+        process.environment = ["PATH": "\(tools.path):/usr/bin:/bin"]
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+
+        let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 2)
+        XCTAssertTrue(result.contains("implausible GPU temperature"))
     }
 
     func testVolumeHealthTableRunsWithSystemAwk() throws {
@@ -577,6 +637,64 @@ final class RuntimeTests: XCTestCase {
         XCTAssertEqual(runtime.plugins.first(where: { $0.id == "remote-enable" })?.lifecycle, .active)
         let record = try await runtime.store?.plugin(id: "remote-enable")
         XCTAssertEqual(record?.enabled, true)
+        await runtime.shutdown()
+    }
+
+    @MainActor
+    func testRemoteEnableReviewsAnUnapprovedPlugin() async throws {
+        let root = try temporaryPlugin(manifest: """
+        id = "remote-review"
+        name = "Remote Review"
+        version = "1.0.0"
+        kiwios_api = "1"
+        license = "MIT"
+        """)
+        let runtime = HubRuntime(pluginRoot: root, storageRoot: try temporaryStorage())
+        await runtime.waitUntilReady()
+        runtime.mode = .remote
+        runtime.remote.enabled = true
+        let identity = RemoteIdentity(login: "owner@example", displayName: "Owner")
+        let reviewRequest = try JSONDecoder().decode(RemoteMutation.self, from: Data(
+            #"{"requestID":"00000000-0000-0000-0000-000000000032","operation":"enablePlugin","pluginID":"remote-review"}"#.utf8
+        ))
+        let reviewData = try await runtime.remoteMutate(
+            reviewRequest, identity: identity, deadline: RemoteRequestDeadline(after: .seconds(2))
+        )
+        let review = try XCTUnwrap(try JSONSerialization.jsonObject(with: reviewData) as? [String: Any])
+        XCTAssertEqual(review["confirmationOperation"] as? String, "confirmPluginEnable")
+        XCTAssertEqual((review["review"] as? [String: Any])?["source"] as? String, "Bundled with KiwiOS")
+        let token = try XCTUnwrap(review["confirmationToken"] as? String)
+        let confirmationData = try JSONSerialization.data(withJSONObject: [
+            "requestID": "00000000-0000-0000-0000-000000000033",
+            "operation": "confirmPluginEnable", "confirmationToken": token,
+        ])
+        let confirmation = try JSONDecoder().decode(RemoteMutation.self, from: confirmationData)
+        do {
+            _ = try await runtime.remoteMutate(
+                confirmation, identity: RemoteIdentity(login: "other@example", displayName: "Other"),
+                deadline: RemoteRequestDeadline(after: .seconds(2))
+            )
+            XCTFail("A different tailnet identity must not consume a source review")
+        } catch { }
+        _ = try await runtime.remoteMutate(
+            confirmation, identity: identity, deadline: RemoteRequestDeadline(after: .seconds(2))
+        )
+        do {
+            _ = try await runtime.remoteMutate(
+                confirmation, identity: identity, deadline: RemoteRequestDeadline(after: .seconds(2))
+            )
+            XCTFail("A consumed source review must not be reusable")
+        } catch { }
+
+        XCTAssertEqual(runtime.plugins.first(where: { $0.id == "remote-review" })?.lifecycle, .active)
+        let record = try await runtime.store?.plugin(id: "remote-review")
+        XCTAssertEqual(record?.enabled, true)
+        let manifestDigest = try XCTUnwrap(record?.manifestDigest)
+        let contentDigest = try XCTUnwrap(record?.contentDigest)
+        let approved = try await runtime.store?.hasApproval(pluginID: "remote-review",
+            manifestDigest: manifestDigest, contentDigest: contentDigest,
+            disclosureDigest: manifestDigest) ?? false
+        XCTAssertTrue(approved)
         await runtime.shutdown()
     }
 
